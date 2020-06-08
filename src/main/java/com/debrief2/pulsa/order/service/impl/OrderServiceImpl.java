@@ -8,10 +8,7 @@ import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
 import com.debrief2.pulsa.order.payload.dto.ProviderPrefixDTO;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
-import com.debrief2.pulsa.order.payload.response.PulsaCatalogResponse;
-import com.debrief2.pulsa.order.payload.response.RecentNumberResponse;
-import com.debrief2.pulsa.order.payload.response.TransactionOverviewResponse;
-import com.debrief2.pulsa.order.payload.response.TransactionResponse;
+import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.ProviderMapper;
 import com.debrief2.pulsa.order.repository.PulsaCatalogMapper;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
@@ -54,7 +51,7 @@ public class OrderServiceImpl implements OrderService {
   }
 
   @Override
-  public List<PulsaCatalogResponse> getAllCatalog(String phone) throws ServiceException {
+  public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {
     //validate format
     if (phone.length()!=5||phone.charAt(0)!='0'){
       throw new ServiceException(ResponseMessage.orderGetAllCatalog400);
@@ -69,7 +66,7 @@ public class OrderServiceImpl implements OrderService {
       if (provider==null||provider.getDeletedAt()!=null){
         throw new ServiceException(ResponseMessage.orderGetAllCatalog404);
       }
-      return mapListCatalogResponseByProviderId.get(providerId);
+      return new AllPulsaCatalogResponse(provider,mapListCatalogResponseByProviderId.get(providerId));
     } catch (NullPointerException e){
       throw new ServiceException(ResponseMessage.orderGetAllCatalog404);
     }
@@ -115,7 +112,6 @@ public class OrderServiceImpl implements OrderService {
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
     checkAllCache();
-    System.out.println(transactionDTOS.toString());
     for (TransactionDTO transactionDTO:transactionDTOS) {
       long providerId = mapProviderIdByPrefix.get(transactionDTO.getPhoneNumber().substring(1,5));
       Provider provider = mapProviderById.get(providerId);
@@ -144,7 +140,7 @@ public class OrderServiceImpl implements OrderService {
   }
 
   @Override
-  public TransactionResponse cancel(long userId, long transactionId) throws ServiceException {
+  public TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException {
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.cancelTransaction404);
@@ -153,10 +149,11 @@ public class OrderServiceImpl implements OrderService {
       throw new ServiceException(ResponseMessage.cancelTransaction400);
     }
     transactionDTO.setStatusId(TransactionStatusName.CANCELED.ordinal()+1);
+    transactionDTO.setVoucherId(0);
     transactionMapper.update(transactionDTO);
     TransactionDTO td = transactionMapper.getById(transactionId);
     checkAllCache();
-    return TransactionResponse.builder()
+    return TransactionResponseNoVoucher.builder()
         .id(td.getId())
         .method(PaymentMethodName.values()[(int) td.getMethodId()-1])
         .phoneNumber(td.getPhoneNumber())

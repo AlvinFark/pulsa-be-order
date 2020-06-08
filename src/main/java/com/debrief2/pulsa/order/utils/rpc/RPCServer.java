@@ -2,9 +2,7 @@ package com.debrief2.pulsa.order.utils.rpc;
 
 import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.payload.request.TransactionRequest;
-import com.debrief2.pulsa.order.payload.response.PulsaCatalogResponse;
-import com.debrief2.pulsa.order.payload.response.RecentNumberResponse;
-import com.debrief2.pulsa.order.payload.response.TransactionResponse;
+import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.service.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
@@ -63,7 +61,7 @@ public class RPCServer {
         try {
           switch (queueName){
             case "getAllCatalog":
-              List<PulsaCatalogResponse> pulsaCatalogResponses = orderService.getAllCatalog(message);
+              AllPulsaCatalogResponse pulsaCatalogResponses = orderService.getAllCatalog(message);
               response = objectMapper.writeValueAsString(pulsaCatalogResponses);
               break;
             case "getRecentNumber":
@@ -72,7 +70,7 @@ public class RPCServer {
               break;
             case "cancel":
               TransactionRequest request = objectMapper.readValue(message,TransactionRequest.class);
-              TransactionResponse transaction = orderService.cancel(request.getUserId(),request.getTransactionId());
+              TransactionResponseNoVoucher transaction = orderService.cancel(request.getUserId(),request.getTransactionId());
               response = objectMapper.writeValueAsString(transaction);
               break;
             default:

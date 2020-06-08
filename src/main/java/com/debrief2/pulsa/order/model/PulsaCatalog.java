@@ -1,5 +1,6 @@
 package com.debrief2.pulsa.order.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,5 +17,6 @@ public class PulsaCatalog {
   private Provider provider;
   private long value;
   private long price;
+  @JsonIgnore
   private Date deletedAt;
 }
