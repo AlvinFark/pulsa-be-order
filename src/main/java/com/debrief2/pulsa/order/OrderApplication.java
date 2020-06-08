@@ -30,13 +30,5 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("getAllCatalog");
     rpcServer.run("getRecentNumber");
     rpcServer.run("cancel");
-
-    Thread.sleep(5000);
-    RPCClient rpcClient = new RPCClient(url,"getAllCatalog");
-    System.out.println(rpcClient.call("08520"));
-    RPCClient rpcClient2 = new RPCClient(url,"getRecentNumber");
-    System.out.println(rpcClient2.call("1"));
-    RPCClient rpcClient3 = new RPCClient(url,"cancel");
-    System.out.println(rpcClient3.call("{\"userId\":1,\"transactionId\":1}"));
   }
 }
