@@ -1,6 +1,5 @@
 package com.debrief2.pulsa.order;
 
-import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.service.OrderService;
 import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
@@ -30,5 +29,6 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("getAllCatalog");
     rpcServer.run("getRecentNumber");
     rpcServer.run("cancel");
+    rpcServer.run("getProviderById");
   }
 }

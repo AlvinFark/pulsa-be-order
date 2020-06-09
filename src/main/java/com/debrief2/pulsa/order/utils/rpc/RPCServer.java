@@ -1,9 +1,11 @@
 package com.debrief2.pulsa.order.utils.rpc;
 
 import com.debrief2.pulsa.order.exception.ServiceException;
+import com.debrief2.pulsa.order.model.Provider;
 import com.debrief2.pulsa.order.payload.request.TransactionRequest;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.service.OrderService;
+import com.debrief2.pulsa.order.service.ProviderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
 import org.slf4j.Logger;
@@ -22,6 +24,8 @@ import java.util.List;
 public class RPCServer {
   @Autowired
   private OrderService orderService;
+  @Autowired
+  private ProviderService providerService;
 
   private static final Logger log = LoggerFactory.getLogger(RpcServer.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -72,6 +76,13 @@ public class RPCServer {
               TransactionRequest request = objectMapper.readValue(message,TransactionRequest.class);
               TransactionResponseNoVoucher transaction = orderService.cancel(request.getUserId(),request.getTransactionId());
               response = objectMapper.writeValueAsString(transaction);
+              break;
+            case "getProviderById":
+              Provider provider = providerService.getProviderById(Long.parseLong(message));
+              if (provider.getDeletedAt()!=null){
+                provider=null;
+              }
+              response = objectMapper.writeValueAsString(provider);
               break;
             default:
               response = "Unknown service method";

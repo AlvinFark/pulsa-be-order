@@ -14,6 +14,7 @@ import com.debrief2.pulsa.order.repository.PulsaCatalogMapper;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
 import com.debrief2.pulsa.order.service.AsyncAdapter;
 import com.debrief2.pulsa.order.service.OrderService;
+import com.debrief2.pulsa.order.service.ProviderService;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,28 +28,9 @@ import java.util.concurrent.CompletableFuture;
 public class OrderServiceImpl implements OrderService {
 
   @Autowired
-  ProviderMapper providerMapper;
-  @Autowired
-  PulsaCatalogMapper pulsaCatalogMapper;
-  @Autowired
   TransactionMapper transactionMapper;
   @Autowired
-  AsyncAdapter asyncAdapter;
-
-  private static HashMap<Long, Provider> mapProviderById = new HashMap<>();
-  private static HashMap<String, Long> mapProviderIdByPrefix = new HashMap<>();
-  private static HashMap<Long, PulsaCatalogDTO> mapCatalogDTOById = new HashMap<>();
-  private static HashMap<Long, ArrayList<PulsaCatalogResponse>> mapListCatalogResponseByProviderId = new HashMap<>();
-
-  @Override
-  public Provider getProviderByPhone(String phone){
-    return null;
-  }
-
-  @Override
-  public PulsaCatalog getCatalogById(long id) {
-    return null;
-  }
+  ProviderService providerService;
 
   @Override
   public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {
@@ -58,37 +40,16 @@ public class OrderServiceImpl implements OrderService {
     }
 
     //validate if phone number prefix exist
-    checkAllCache();
-
-    try {
-      long providerId = mapProviderIdByPrefix.get(phone.substring(1));
-      Provider provider = mapProviderById.get(providerId);
-      if (provider==null||provider.getDeletedAt()!=null){
-        throw new ServiceException(ResponseMessage.orderGetAllCatalog404);
-      }
-      return new AllPulsaCatalogResponse(provider,mapListCatalogResponseByProviderId.get(providerId));
-    } catch (NullPointerException e){
+    Provider provider = providerService.getProviderByPrefix(phone.substring(1));
+    if (provider==null||provider.getDeletedAt()!=null){
       throw new ServiceException(ResponseMessage.orderGetAllCatalog404);
     }
-  }
 
-  @Override
-  public Provider getProviderById(long id) {
-    return null;
-  }
-
-  @Override
-  public Transaction getTransactionDetailedById(long id) {
-    return null;
+    return new AllPulsaCatalogResponse(provider,providerService.getCatalogResponseByProviderId(provider.getId()));
   }
 
   @Override
   public Transaction getTransactionById(long id) {
-    return null;
-  }
-
-  @Override
-  public PaymentMethod getMethodById(long id) {
     return null;
   }
 
@@ -111,10 +72,8 @@ public class OrderServiceImpl implements OrderService {
   public List<RecentNumberResponse> getRecentNumber(long userId) {
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
-    checkAllCache();
     for (TransactionDTO transactionDTO:transactionDTOS) {
-      long providerId = mapProviderIdByPrefix.get(transactionDTO.getPhoneNumber().substring(1,5));
-      Provider provider = mapProviderById.get(providerId);
+      Provider provider = providerService.getProviderByPrefix(transactionDTO.getPhoneNumber().substring(1,5));
       RecentNumberResponse recentNumberResponse = RecentNumberResponse.builder()
           .number(transactionDTO.getPhoneNumber())
           .provider(provider)
@@ -152,12 +111,11 @@ public class OrderServiceImpl implements OrderService {
     transactionDTO.setVoucherId(0);
     transactionMapper.update(transactionDTO);
     TransactionDTO td = transactionMapper.getById(transactionId);
-    checkAllCache();
     return TransactionResponseNoVoucher.builder()
         .id(td.getId())
         .method(PaymentMethodName.values()[(int) td.getMethodId()-1])
         .phoneNumber(td.getPhoneNumber())
-        .catalog(catalogDTOToCatalogAdapter(mapCatalogDTOById.get(td.getCatalogId())))
+        .catalog(catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(td.getCatalogId())))
         //.voucher()
         .status(TransactionStatusName.values()[(int) td.getStatusId()-1])
         .createdAt(td.getCreatedAt())
@@ -175,56 +133,10 @@ public class OrderServiceImpl implements OrderService {
     return null;
   }
 
-  @Override
-  public void reloadCatalog(){
-    //get from db
-    List<PulsaCatalogDTO> pulsaCatalogDTOS = pulsaCatalogMapper.getAll();
-    //put it in hash map
-    mapCatalogDTOById = new HashMap<>();
-    mapListCatalogResponseByProviderId = new HashMap<>();
-    for (PulsaCatalogDTO pulsaCatalogDTO:pulsaCatalogDTOS) {
-      mapCatalogDTOById.put(pulsaCatalogDTO.getId(),pulsaCatalogDTO);
-      if (pulsaCatalogDTO.getDeletedAt()==null) {
-        mapListCatalogResponseByProviderId.computeIfAbsent(pulsaCatalogDTO.getProviderId(), k -> new ArrayList<>()).add(new PulsaCatalogResponse(pulsaCatalogDTO));
-      }
-    }
-  }
-
-  public void reloadProvider(){
-    //get from db
-    List<Provider> providers = providerMapper.getAll();
-    //convert provider to map
-    mapProviderById = new HashMap<>();
-    for (Provider provider:providers){
-      mapProviderById.put(provider.getId(),provider);
-    }
-  }
-
-  @Override
-  public void reloadPrefix(){
-    //get from db
-    List<ProviderPrefixDTO> providerPrefixDTOS = providerMapper.getAllPrefix();
-    mapProviderIdByPrefix = new HashMap<>();
-    for (ProviderPrefixDTO providerPrefixDTO:providerPrefixDTOS){
-      mapProviderIdByPrefix.put(providerPrefixDTO.getPrefix(),providerPrefixDTO.getProviderId());
-    }
-  }
-
-  @Override
-  public void checkAllCache(){
-    if (mapProviderById.isEmpty()||mapProviderIdByPrefix.isEmpty()||mapCatalogDTOById.isEmpty()
-        ||mapListCatalogResponseByProviderId.isEmpty()){
-      reloadProvider();
-      CompletableFuture<Void> asyncReloadCatalog = asyncAdapter.reloadCatalog();
-      CompletableFuture<Void> asyncReloadPrefix = asyncAdapter.reloadPrefix();
-      CompletableFuture.allOf(asyncReloadCatalog,asyncReloadPrefix);
-    }
-  }
-
   public PulsaCatalog catalogDTOToCatalogAdapter(PulsaCatalogDTO catalogDTO){
     return PulsaCatalog.builder()
         .id(catalogDTO.getId())
-        .provider(mapProviderById.get(catalogDTO.getProviderId()))
+        .provider(providerService.getProviderById(catalogDTO.getProviderId()))
         .value(catalogDTO.getValue())
         .price(catalogDTO.getPrice())
         .deletedAt(catalogDTO.getDeletedAt())

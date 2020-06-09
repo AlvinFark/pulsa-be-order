@@ -8,12 +8,7 @@ import com.debrief2.pulsa.order.payload.response.*;
 import java.util.List;
 
 public interface OrderService {
-  Provider getProviderByPhone(String phone);
-  PulsaCatalog getCatalogById(long id);
-  Provider getProviderById(long id);
-  Transaction getTransactionDetailedById(long id);
   Transaction getTransactionById(long id);
-  PaymentMethod getMethodById(long id);
   Transaction updateTransaction(Transaction transaction);
   Transaction updateTransactionWithIssueVoucher(Transaction transaction);
   List<Transaction> getAllTransactionByUserIdAndStatusTypeAndPage(long userId, TransactionStatusType statusType, long page);
@@ -24,7 +19,4 @@ public interface OrderService {
   TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException;
   List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page);
   List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page);
-  void checkAllCache();
-  void reloadPrefix();
-  void reloadCatalog();
 }

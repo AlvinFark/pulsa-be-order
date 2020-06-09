@@ -10,20 +10,20 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class AsyncAdapter {
   @Autowired
-  OrderService orderService;
+  ProviderService providerService;
 
   private static final Logger log = LoggerFactory.getLogger(AsyncAdapter.class);
 
   public CompletableFuture<Void>reloadPrefix(){
     log.info("reloading prefix started");
-    orderService.reloadPrefix();
+    providerService.reloadPrefix();
     log.info("reloading prefix finished");
     return CompletableFuture.completedFuture(null);
   }
 
   public CompletableFuture<Void>reloadCatalog(){
     log.info("reloading catalog started");
-    orderService.reloadCatalog();
+    providerService.reloadCatalog();
     log.info("reloading catalog finished");
     return CompletableFuture.completedFuture(null);
   }
