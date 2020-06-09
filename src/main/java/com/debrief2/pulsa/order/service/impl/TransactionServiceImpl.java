@@ -26,22 +26,6 @@ public class TransactionServiceImpl implements TransactionService {
   ProviderService providerService;
 
   @Override
-  public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {
-    //validate format
-    if (phone.length()!=5||phone.charAt(0)!='0'){
-      throw new ServiceException(ResponseMessage.getAllCatalog400);
-    }
-
-    //validate if phone number prefix exist
-    Provider provider = providerService.getProviderByPrefix(phone.substring(1));
-    if (provider==null||provider.getDeletedAt()!=null){
-      throw new ServiceException(ResponseMessage.getAllCatalog404);
-    }
-
-    return new AllPulsaCatalogResponse(provider,providerService.getCatalogResponseByProviderId(provider.getId()));
-  }
-
-  @Override
   public TransactionResponse getTransactionById(long id) throws ServiceException {
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     if (transactionDTO==null){
@@ -169,7 +153,7 @@ public class TransactionServiceImpl implements TransactionService {
         .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
         .phoneNumber(transactionDTO.getPhoneNumber())
         .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-//        .voucher()
+        .voucher(new Voucher())
         .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
         .createdAt(transactionDTO.getCreatedAt())
         .updatedAt(transactionDTO.getUpdatedAt())

@@ -14,7 +14,6 @@ public interface TransactionService {
   Transaction updateTransaction(Transaction transaction);
   Transaction updateTransactionWithIssueVoucher(Transaction transaction);
   List<Transaction> getAllTransactionByUserIdAndStatusTypeAndPage(long userId, TransactionStatusType statusType, long page);
-  AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException;
   List<RecentNumberResponse> getRecentNumber(long userId);
   Transaction createTransaction(long userId, long catalogId, String phone);
   Transaction pay(long userId, long transactionId, long methodId, long voucherId);

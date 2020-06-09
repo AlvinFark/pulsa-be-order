@@ -1,14 +1,17 @@
 package com.debrief2.pulsa.order.service.impl;
 
+import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.model.Provider;
 import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.payload.dto.ProviderPrefixDTO;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
+import com.debrief2.pulsa.order.payload.response.AllPulsaCatalogResponse;
 import com.debrief2.pulsa.order.payload.response.PulsaCatalogResponse;
 import com.debrief2.pulsa.order.repository.ProviderMapper;
 import com.debrief2.pulsa.order.repository.PulsaCatalogMapper;
 import com.debrief2.pulsa.order.service.AsyncAdapter;
 import com.debrief2.pulsa.order.service.ProviderService;
+import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -129,4 +132,20 @@ public class ProviderServiceImpl implements ProviderService {
         .deletedAt(catalogDTO.getDeletedAt())
         .build();
   };
+
+  @Override
+  public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {
+    //validate format
+    if (phone.length()!=5||phone.charAt(0)!='0'){
+      throw new ServiceException(ResponseMessage.getAllCatalog400);
+    }
+
+    //validate if phone number prefix exist
+    Provider provider = getProviderByPrefix(phone.substring(1));
+    if (provider==null||provider.getDeletedAt()!=null){
+      throw new ServiceException(ResponseMessage.getAllCatalog404);
+    }
+
+    return new AllPulsaCatalogResponse(provider,getCatalogResponseByProviderId(provider.getId()));
+  }
 }

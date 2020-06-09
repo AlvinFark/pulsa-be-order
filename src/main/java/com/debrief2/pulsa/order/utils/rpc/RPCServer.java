@@ -68,7 +68,7 @@ public class RPCServer {
         try {
           switch (queueName){
             case "getAllCatalog":
-              AllPulsaCatalogResponse pulsaCatalogResponses = transactionService.getAllCatalog(message);
+              AllPulsaCatalogResponse pulsaCatalogResponses = providerService.getAllCatalog(message);
               response = objectMapper.writeValueAsString(pulsaCatalogResponses);
               break;
             case "getRecentNumber":
@@ -82,14 +82,17 @@ public class RPCServer {
               break;
             case "getProviderById":
               Provider provider = providerService.getProviderById(Long.parseLong(message));
-              if (provider.getDeletedAt() != null) {
-                provider = null;
-              }
               response = objectMapper.writeValueAsString(provider);
+              if (provider==null||provider.getDeletedAt()!=null) {
+                response = ResponseMessage.getProviderById404;
+              }
               break;
             case "getPaymentMethodNameById":
               PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
               response = objectMapper.writeValueAsString(paymentMethodName);
+              if (paymentMethodName==null){
+                response = ResponseMessage.getPaymentMethodNameById404;
+              }
               break;
             case "getTransactionById":
               TransactionResponse transactionResponse = transactionService.getTransactionById(Long.parseLong(message));

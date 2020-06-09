@@ -7,5 +7,7 @@ public class ResponseMessage {
   public static String cancelTransaction404 = "unknown transaction";
   public static String cancelTransaction400 = "can't cancel completed transaction";
   public static String getTransactionById404 = "unknown transaction";
+  public static String getProviderById404 = "unknown provider";
+  public static String getPaymentMethodNameById404 = "unknown method";
 
 }
