@@ -9,7 +9,8 @@ import com.debrief2.pulsa.order.payload.response.*;
 import java.util.List;
 
 public interface TransactionService {
-  Transaction getTransactionById(long id);
+  TransactionResponse getTransactionById(long id) throws ServiceException;
+  TransactionResponse getTransactionByIdByUserId(long id, long UserId) throws ServiceException;
   Transaction updateTransaction(Transaction transaction);
   Transaction updateTransactionWithIssueVoucher(Transaction transaction);
   List<Transaction> getAllTransactionByUserIdAndStatusTypeAndPage(long userId, TransactionStatusType statusType, long page);

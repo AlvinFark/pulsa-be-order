@@ -72,12 +72,8 @@ public class RPCServer {
               response = objectMapper.writeValueAsString(pulsaCatalogResponses);
               break;
             case "getRecentNumber":
-              try {
-                List<RecentNumberResponse> recentNumbers = transactionService.getRecentNumber(Long.parseLong(message));
-                response = objectMapper.writeValueAsString(recentNumbers);
-              } catch (NumberFormatException numberFormatException) {
-                response = ResponseMessage.getRecentNumber400;
-              }
+              List<RecentNumberResponse> recentNumbers = transactionService.getRecentNumber(Long.parseLong(message));
+              response = objectMapper.writeValueAsString(recentNumbers);
               break;
             case "cancel":
               TransactionRequest request = objectMapper.readValue(message, TransactionRequest.class);
@@ -85,31 +81,32 @@ public class RPCServer {
               response = objectMapper.writeValueAsString(transaction);
               break;
             case "getProviderById":
-              try {
-                Provider provider = providerService.getProviderById(Long.parseLong(message));
-                if (provider.getDeletedAt() != null) {
-                  provider = null;
-                }
-                response = objectMapper.writeValueAsString(provider);
-              } catch (NumberFormatException numberFormatException) {
-                response = ResponseMessage.getProviderById400;
+              Provider provider = providerService.getProviderById(Long.parseLong(message));
+              if (provider.getDeletedAt() != null) {
+                provider = null;
               }
+              response = objectMapper.writeValueAsString(provider);
               break;
             case "getPaymentMethodNameById":
-              try {
-                PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
-                response = objectMapper.writeValueAsString(paymentMethodName);
-              } catch (NumberFormatException numberFormatException) {
-                response = ResponseMessage.getPaymentMethodNameById400;
-              }
+              PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
+              response = objectMapper.writeValueAsString(paymentMethodName);
+              break;
+            case "getTransactionById":
+              TransactionResponse transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
+              response = objectMapper.writeValueAsString(transactionResponse);
+              break;
+            case "getTransactionByIdByUserId":
+              TransactionRequest request2 = objectMapper.readValue(message, TransactionRequest.class);
+              TransactionResponse transactionResponse2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
+              response = objectMapper.writeValueAsString(transactionResponse2);
               break;
             default:
-              response = "Unknown service method";
+              response = "unknown service method";
               break;
           }
         } catch (ServiceException serviceException) {
           response = serviceException.getMessage();
-        } catch (InvalidFormatException invalidFormatException) {
+        } catch (InvalidFormatException|NumberFormatException e) {
           response = ResponseMessage.generic400;
         }
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));

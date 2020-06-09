@@ -1,6 +1,7 @@
 package com.debrief2.pulsa.order.payload.response;
 
 import com.debrief2.pulsa.order.model.PulsaCatalog;
+import com.debrief2.pulsa.order.model.Voucher;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import lombok.AllArgsConstructor;
@@ -19,7 +20,7 @@ public class TransactionResponse {
   private PaymentMethodName method;
   private String phoneNumber;
   private PulsaCatalog catalog;
-  //  private Voucher voucher;
+  private Voucher voucher;
   private TransactionStatusName status;
   private Date createdAt;
   private Date updatedAt;

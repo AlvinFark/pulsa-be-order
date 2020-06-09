@@ -31,5 +31,7 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("cancel");
     rpcServer.run("getProviderById");
     rpcServer.run("getPaymentMethodNameById");
+    rpcServer.run("getTransactionById");
+    rpcServer.run("getTransactionByIdByUserId");
   }
 }

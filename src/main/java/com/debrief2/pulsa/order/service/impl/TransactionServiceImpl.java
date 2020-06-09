@@ -42,8 +42,21 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   @Override
-  public Transaction getTransactionById(long id) {
-    return null;
+  public TransactionResponse getTransactionById(long id) throws ServiceException {
+    TransactionDTO transactionDTO = transactionMapper.getById(id);
+    if (transactionDTO==null){
+      throw new ServiceException(ResponseMessage.getTransactionById404);
+    }
+    return transactionDTOtoTransactionResponseAdapter(transactionDTO);
+  }
+
+  @Override
+  public TransactionResponse getTransactionByIdByUserId(long id, long userId) throws ServiceException {
+    TransactionDTO transactionDTO = transactionMapper.getById(id);
+    if (transactionDTO==null||transactionDTO.getUserId()!=userId){
+      throw new ServiceException(ResponseMessage.getTransactionById404);
+    }
+    return transactionDTOtoTransactionResponseAdapter(transactionDTO);
   }
 
   @Override
@@ -109,7 +122,6 @@ public class TransactionServiceImpl implements TransactionService {
         .method(getPaymentMethodNameById(td.getMethodId()))
         .phoneNumber(td.getPhoneNumber())
         .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(td.getCatalogId())))
-        //.voucher()
         .status(getTransactionStatusNameById(td.getStatusId()))
         .createdAt(td.getCreatedAt())
         .updatedAt(td.getUpdatedAt())
@@ -149,5 +161,18 @@ public class TransactionServiceImpl implements TransactionService {
 
   private long getIdByTransactionStatusName(TransactionStatusName transactionStatusName){
     return transactionStatusName.ordinal()+1;
+  }
+
+  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO){
+    return TransactionResponse.builder()
+        .id(transactionDTO.getId())
+        .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
+        .phoneNumber(transactionDTO.getPhoneNumber())
+        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
+//        .voucher()
+        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
+        .createdAt(transactionDTO.getCreatedAt())
+        .updatedAt(transactionDTO.getUpdatedAt())
+        .build();
   }
 }
