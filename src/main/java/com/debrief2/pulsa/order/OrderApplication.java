@@ -1,6 +1,6 @@
 package com.debrief2.pulsa.order;
 
-import com.debrief2.pulsa.order.service.OrderService;
+import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class OrderApplication implements CommandLineRunner {
 
   @Autowired
-  OrderService orderService;
+  TransactionService transactionService;
   @Autowired
   RPCServer rpcServer;
 
@@ -30,5 +30,6 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("getRecentNumber");
     rpcServer.run("cancel");
     rpcServer.run("getProviderById");
+    rpcServer.run("getPaymentMethodNameById");
   }
 }

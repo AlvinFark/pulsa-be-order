@@ -1,6 +1,7 @@
 package com.debrief2.pulsa.order.service.impl;
 
 import com.debrief2.pulsa.order.model.Provider;
+import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.payload.dto.ProviderPrefixDTO;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.response.PulsaCatalogResponse;
@@ -117,4 +118,15 @@ public class ProviderServiceImpl implements ProviderService {
       return null;
     }
   }
+
+  @Override
+  public PulsaCatalog catalogDTOToCatalogAdapter(PulsaCatalogDTO catalogDTO){
+    return PulsaCatalog.builder()
+        .id(catalogDTO.getId())
+        .provider(getProviderById(catalogDTO.getProviderId()))
+        .value(catalogDTO.getValue())
+        .price(catalogDTO.getPrice())
+        .deletedAt(catalogDTO.getDeletedAt())
+        .build();
+  };
 }

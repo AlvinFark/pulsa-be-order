@@ -2,11 +2,14 @@ package com.debrief2.pulsa.order.utils.rpc;
 
 import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.model.Provider;
+import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
 import com.debrief2.pulsa.order.payload.request.TransactionRequest;
 import com.debrief2.pulsa.order.payload.response.*;
-import com.debrief2.pulsa.order.service.OrderService;
+import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.service.ProviderService;
+import com.debrief2.pulsa.order.utils.ResponseMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.rabbitmq.client.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +26,7 @@ import java.util.List;
 @Component
 public class RPCServer {
   @Autowired
-  private OrderService orderService;
+  private TransactionService transactionService;
   @Autowired
   private ProviderService providerService;
 
@@ -65,24 +68,40 @@ public class RPCServer {
         try {
           switch (queueName){
             case "getAllCatalog":
-              AllPulsaCatalogResponse pulsaCatalogResponses = orderService.getAllCatalog(message);
+              AllPulsaCatalogResponse pulsaCatalogResponses = transactionService.getAllCatalog(message);
               response = objectMapper.writeValueAsString(pulsaCatalogResponses);
               break;
             case "getRecentNumber":
-              List<RecentNumberResponse> recentNumbers = orderService.getRecentNumber(Long.parseLong(message));
-              response = objectMapper.writeValueAsString(recentNumbers);
+              try {
+                List<RecentNumberResponse> recentNumbers = transactionService.getRecentNumber(Long.parseLong(message));
+                response = objectMapper.writeValueAsString(recentNumbers);
+              } catch (NumberFormatException numberFormatException) {
+                response = ResponseMessage.getRecentNumber400;
+              }
               break;
             case "cancel":
-              TransactionRequest request = objectMapper.readValue(message,TransactionRequest.class);
-              TransactionResponseNoVoucher transaction = orderService.cancel(request.getUserId(),request.getTransactionId());
+              TransactionRequest request = objectMapper.readValue(message, TransactionRequest.class);
+              TransactionResponseNoVoucher transaction = transactionService.cancel(request.getUserId(), request.getTransactionId());
               response = objectMapper.writeValueAsString(transaction);
               break;
             case "getProviderById":
-              Provider provider = providerService.getProviderById(Long.parseLong(message));
-              if (provider.getDeletedAt()!=null){
-                provider=null;
+              try {
+                Provider provider = providerService.getProviderById(Long.parseLong(message));
+                if (provider.getDeletedAt() != null) {
+                  provider = null;
+                }
+                response = objectMapper.writeValueAsString(provider);
+              } catch (NumberFormatException numberFormatException) {
+                response = ResponseMessage.getProviderById400;
               }
-              response = objectMapper.writeValueAsString(provider);
+              break;
+            case "getPaymentMethodNameById":
+              try {
+                PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
+                response = objectMapper.writeValueAsString(paymentMethodName);
+              } catch (NumberFormatException numberFormatException) {
+                response = ResponseMessage.getPaymentMethodNameById400;
+              }
               break;
             default:
               response = "Unknown service method";
@@ -90,8 +109,9 @@ public class RPCServer {
           }
         } catch (ServiceException serviceException) {
           response = serviceException.getMessage();
+        } catch (InvalidFormatException invalidFormatException) {
+          response = ResponseMessage.generic400;
         }
-
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));
         channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
         synchronized (monitor) {
