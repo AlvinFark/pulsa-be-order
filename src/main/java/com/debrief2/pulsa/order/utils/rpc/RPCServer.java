@@ -3,6 +3,7 @@ package com.debrief2.pulsa.order.utils.rpc;
 import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.model.Provider;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
+import com.debrief2.pulsa.order.payload.request.TransactionHistoryRequest;
 import com.debrief2.pulsa.order.payload.request.TransactionRequest;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.service.TransactionService;
@@ -102,6 +103,16 @@ public class RPCServer {
               TransactionRequest request2 = objectMapper.readValue(message, TransactionRequest.class);
               TransactionResponse transactionResponse2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
               response = objectMapper.writeValueAsString(transactionResponse2);
+              break;
+            case "getHistoryInProgress":
+              TransactionHistoryRequest historyRequest = objectMapper.readValue(message, TransactionHistoryRequest.class);
+              List<TransactionOverviewResponse> overviewResponses = transactionService.getHistoryInProgress(historyRequest.getUserId(),historyRequest.getPage());
+              response = objectMapper.writeValueAsString(overviewResponses);
+              break;
+            case "getHistoryCompleted":
+              TransactionHistoryRequest historyRequest2 = objectMapper.readValue(message, TransactionHistoryRequest.class);
+              List<TransactionOverviewResponse> overviewResponses2 = transactionService.getHistoryCompleted(historyRequest2.getUserId(),historyRequest2.getPage());
+              response = objectMapper.writeValueAsString(overviewResponses2);
               break;
             default:
               response = "unknown service method";

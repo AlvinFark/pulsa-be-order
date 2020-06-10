@@ -10,6 +10,7 @@ import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
 import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.service.ProviderService;
+import com.debrief2.pulsa.order.utils.Global;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -41,21 +42,6 @@ public class TransactionServiceImpl implements TransactionService {
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
     return transactionDTOtoTransactionResponseAdapter(transactionDTO);
-  }
-
-  @Override
-  public Transaction updateTransaction(Transaction transaction) {
-    return null;
-  }
-
-  @Override
-  public Transaction updateTransactionWithIssueVoucher(Transaction transaction) {
-    return null;
-  }
-
-  @Override
-  public List<Transaction> getAllTransactionByUserIdAndStatusTypeAndPage(long userId, TransactionStatusType statusType, long page) {
-    return null;
   }
 
   @Override
@@ -114,12 +100,24 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) {
-    return null;
+    return getHistory(userId,page,TransactionStatusType.IN_PROGRESS);
   }
 
   @Override
   public List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) {
-    return null;
+    return getHistory(userId,page,TransactionStatusType.COMPLETED);
+  }
+
+  private List<TransactionOverviewResponse> getHistory(long userId, long page, TransactionStatusType transactionStatusType){
+    transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    long offset = (page-1)*10;
+    List<TransactionDTO> transactionDTOS = transactionMapper.getAllByUserIdAndStatusTypeIdAndOffset(userId,getIdByTransactionStatusType(transactionStatusType),offset);
+    List<TransactionOverviewResponse> transactionOverviewResponses = new ArrayList<>();
+    for (TransactionDTO transactionDTO:transactionDTOS) {
+      transactionOverviewResponses.add(transactionDTOtoTransactionOverviewResponseAdapter(transactionDTO));
+    }
+    return transactionOverviewResponses;
   }
 
   @Override
@@ -147,16 +145,49 @@ public class TransactionServiceImpl implements TransactionService {
     return transactionStatusName.ordinal()+1;
   }
 
+  private TransactionStatusType getTransactionStatusTypeById(long id){
+    try {
+      return TransactionStatusType.values()[(int) id-1];
+    } catch (ArrayIndexOutOfBoundsException e) {
+      return null;
+    }
+  }
+
+  private long getIdByTransactionStatusType(TransactionStatusType transactionStatusType){
+    return transactionStatusType.ordinal()+1;
+  }
+
   private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO){
+//    Voucher voucher = get from promotion domain (transactionDTO.getVoucherId)
+    //calculate deduction
     return TransactionResponse.builder()
         .id(transactionDTO.getId())
         .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
         .phoneNumber(transactionDTO.getPhoneNumber())
         .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-        .voucher(new Voucher())
+//        .voucher(voucher)
         .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
         .createdAt(transactionDTO.getCreatedAt())
         .updatedAt(transactionDTO.getUpdatedAt())
         .build();
+  }
+
+  private TransactionOverviewResponse transactionResponseToTransactionOverviewResponseAdapter(TransactionResponse transactionResponse){
+    long voucher = 0;
+    if (transactionResponse.getVoucher()!=null){
+      voucher = transactionResponse.getVoucher().getDeduction();
+    }
+    return TransactionOverviewResponse.builder()
+        .id(transactionResponse.getId())
+        .phoneNumber(transactionResponse.getPhoneNumber())
+        .price(transactionResponse.getCatalog().getPrice())
+        .voucher(voucher)
+        .status(transactionResponse.getStatus().name())
+        .createdAt(transactionResponse.getCreatedAt())
+        .build();
+  }
+
+  private TransactionOverviewResponse transactionDTOtoTransactionOverviewResponseAdapter(TransactionDTO transactionDTO){
+    return transactionResponseToTransactionOverviewResponseAdapter(transactionDTOtoTransactionResponseAdapter(transactionDTO));
   }
 }

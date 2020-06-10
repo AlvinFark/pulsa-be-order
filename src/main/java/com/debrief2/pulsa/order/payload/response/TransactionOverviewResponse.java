@@ -13,7 +13,7 @@ import java.util.Date;
 @AllArgsConstructor
 public class TransactionOverviewResponse {
   private long id;
-  private String phone;
+  private String phoneNumber;
   private long price;
   private long voucher;
   private String status;

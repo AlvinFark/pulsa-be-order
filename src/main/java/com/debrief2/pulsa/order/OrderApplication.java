@@ -33,5 +33,7 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("getPaymentMethodNameById");
     rpcServer.run("getTransactionById");
     rpcServer.run("getTransactionByIdByUserId");
+    rpcServer.run("getHistoryInProgress");
+    rpcServer.run("getHistoryCompleted");
   }
 }

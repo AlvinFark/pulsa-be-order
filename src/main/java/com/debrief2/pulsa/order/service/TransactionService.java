@@ -11,9 +11,6 @@ import java.util.List;
 public interface TransactionService {
   TransactionResponse getTransactionById(long id) throws ServiceException;
   TransactionResponse getTransactionByIdByUserId(long id, long UserId) throws ServiceException;
-  Transaction updateTransaction(Transaction transaction);
-  Transaction updateTransactionWithIssueVoucher(Transaction transaction);
-  List<Transaction> getAllTransactionByUserIdAndStatusTypeAndPage(long userId, TransactionStatusType statusType, long page);
   List<RecentNumberResponse> getRecentNumber(long userId);
   Transaction createTransaction(long userId, long catalogId, String phone);
   Transaction pay(long userId, long transactionId, long methodId, long voucherId);
