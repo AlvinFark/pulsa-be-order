@@ -97,7 +97,7 @@ public class RPCServer {
               }
               break;
             case "getTransactionById":
-              TransactionResponse transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
+              TransactionResponseWithMethodId transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
               response = objectMapper.writeValueAsString(transactionResponse);
               break;
             case "getTransactionByIdByUserId":

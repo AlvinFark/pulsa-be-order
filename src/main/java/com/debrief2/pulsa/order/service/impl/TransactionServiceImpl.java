@@ -28,12 +28,12 @@ public class TransactionServiceImpl implements TransactionService {
   ProviderService providerService;
 
   @Override
-  public TransactionResponse getTransactionById(long id) throws ServiceException {
+  public TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException {
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     if (transactionDTO==null){
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
-    return transactionDTOtoTransactionResponseAdapter(transactionDTO);
+    return transactionDTOtoTransactionResponseWithMethodIdAdapter(transactionDTO);
   }
 
   @Override
@@ -222,6 +222,18 @@ public class TransactionServiceImpl implements TransactionService {
         .voucher(voucher)
         .status(transactionResponse.getStatus().name())
         .createdAt(transactionResponse.getCreatedAt())
+        .build();
+  }
+
+  private TransactionResponseWithMethodId transactionDTOtoTransactionResponseWithMethodIdAdapter(TransactionDTO transactionDTO){
+    return TransactionResponseWithMethodId.builder()
+        .id(transactionDTO.getId())
+        .methodId(transactionDTO.getMethodId())
+        .phoneNumber(transactionDTO.getPhoneNumber())
+        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
+        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
+        .createdAt(transactionDTO.getCreatedAt())
+        .updatedAt(transactionDTO.getUpdatedAt())
         .build();
   }
 
