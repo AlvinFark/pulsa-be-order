@@ -9,5 +9,10 @@ public class ResponseMessage {
   public static String getTransactionById404 = "unknown transaction";
   public static String getProviderById404 = "unknown provider";
   public static String getPaymentMethodNameById404 = "unknown method";
+  public static String createTransaction409 = "you’ve already requested this exact order within the last 30 seconds, please try again later if you actually intended to do that";
+  public static String createTransaction404catalog = "catalog not found";
+  public static String createTransaction400Unauthorized = "selected catalog is not available for this phone’s provider";
+  public static String createTransaction404phone = "unknown phone number";
+  public static String createTransaction400phone = "invalid phone number";
 
 }

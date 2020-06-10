@@ -35,5 +35,6 @@ public class OrderApplication implements CommandLineRunner {
     rpcServer.run("getTransactionByIdByUserId");
     rpcServer.run("getHistoryInProgress");
     rpcServer.run("getHistoryCompleted");
+    rpcServer.run("createTransaction");
   }
 }

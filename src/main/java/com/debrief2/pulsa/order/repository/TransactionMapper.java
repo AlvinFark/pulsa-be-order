@@ -1,9 +1,7 @@
 package com.debrief2.pulsa.order.repository;
 
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.*;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -26,4 +24,11 @@ public interface TransactionMapper {
 
   @Select("SELECT transaction.* FROM transaction INNER JOIN transaction_status ON transaction.statusId = transaction_status.id WHERE userId = #{userId} AND transaction_status.typeId = #{statusTypeId} ORDER BY transaction.createdAt DESC LIMIT #{offset},10")
   List<TransactionDTO> getAllByUserIdAndStatusTypeIdAndOffset(long userId, long statusTypeId, long offset);
+
+  @Select("SELECT * FROM transaction WHERE userId=#{userId} AND phoneNumber=#{phoneNumber} AND catalogId=#{catalogId} AND methodId=#{walletId} AND voucherId=0 AND statusId=#{waitingId} AND DATE_ADD(createdAt, INTERVAL 30 SECOND) > NOW()")
+  TransactionDTO checkExistWithin30second(long userId, String phoneNumber, long catalogId, long walletId, long waitingId);
+
+  @Insert("INSERT INTO transaction(userId,methodId,phoneNumber,catalogId,statusId) VALUES(#{userId},#{methodId},#{phoneNumber},#{catalogId},#{statusId})")
+  @Options(useGeneratedKeys = true, keyProperty = "id")
+  void insert(TransactionDTO transactionDTO);
 }

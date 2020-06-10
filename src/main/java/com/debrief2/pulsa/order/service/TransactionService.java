@@ -12,7 +12,7 @@ public interface TransactionService {
   TransactionResponse getTransactionById(long id) throws ServiceException;
   TransactionResponse getTransactionByIdByUserId(long id, long UserId) throws ServiceException;
   List<RecentNumberResponse> getRecentNumber(long userId);
-  Transaction createTransaction(long userId, long catalogId, String phone);
+  OrderResponse createTransaction(long userId, long catalogId, String phone) throws ServiceException;
   Transaction pay(long userId, long transactionId, long methodId, long voucherId);
   TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException;
   List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page);

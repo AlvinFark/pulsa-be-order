@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OrderResponse {
   private long id;
-  private String phone;
+  private String phoneNumber;
   private PulsaCatalog catalog;
 }
