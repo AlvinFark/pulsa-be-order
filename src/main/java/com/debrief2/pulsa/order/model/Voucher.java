@@ -2,18 +2,23 @@ package com.debrief2.pulsa.order.model;
 
 import com.debrief2.pulsa.order.model.enums.VoucherType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Voucher {
     private long id;
-    @JsonIgnore
-    private VoucherType voucherType;
     private String name;
-    @JsonIgnore
-    private long discount;
     private long deduction;
     private long maxDeduction;
+    private VoucherType voucherTypeName;
+    @JsonIgnore
+    private long finalPrice;
     @JsonIgnore
     private long value;
 }

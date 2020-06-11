@@ -5,6 +5,7 @@ import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
+import com.debrief2.pulsa.order.model.enums.VoucherType;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
 import com.debrief2.pulsa.order.payload.response.*;
@@ -15,6 +16,7 @@ import com.debrief2.pulsa.order.utils.Global;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,7 @@ public class TransactionServiceImpl implements TransactionService {
 
 //  @Value("${cloudAMQP.url}")
   private String url = "amqp://tfgupaen:DKiggzp1uqZP7do96IFUFgW-SOPNCDl0@emu.rmq.cloudamqp.com/tfgupaen";
+  ObjectMapper objectMapper = new ObjectMapper();
 
   @Override
   public TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException {
@@ -214,14 +217,13 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO){
-    //!!TO-DOs!! Voucher voucher = get from promotion domain (transactionDTO.getVoucherId)
-    //!!TO-DOs!! calculate deduction
+    Voucher voucher = getVoucher(transactionDTO.getVoucherId());
     return TransactionResponse.builder()
         .id(transactionDTO.getId())
         .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
         .phoneNumber(transactionDTO.getPhoneNumber())
         .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-        //!!TO-DOs!! .voucher(voucher)
+        .voucher(voucher)
         .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
         .createdAt(transactionDTO.getCreatedAt())
         .updatedAt(transactionDTO.getUpdatedAt())
@@ -231,7 +233,7 @@ public class TransactionServiceImpl implements TransactionService {
   private TransactionOverviewResponse transactionResponseToTransactionOverviewResponseAdapter(TransactionResponse transactionResponse){
     long voucher = 0;
     if (transactionResponse.getVoucher()!=null){
-      voucher = transactionResponse.getVoucher().getDeduction();
+      voucher = transactionResponse.getCatalog().getPrice() - transactionResponse.getVoucher().getFinalPrice();
     }
     return TransactionOverviewResponse.builder()
         .id(transactionResponse.getId())
@@ -269,15 +271,47 @@ public class TransactionServiceImpl implements TransactionService {
         .build();
   }
 
+  ///////////////////////////////////////////// RPC Calls /////////////////////////////////////////////
+
   private boolean isUserExist(long id) {
+//    try {
+//      RPCClient rpcClient = new RPCClient(url,"getBalance");
+//      if (!rpcClient.call(String.valueOf(id)).equals("user not found")){
+//        return true;
+//      }
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
+//    return false;
+    return true;
+  }
+
+  private Voucher redeem(long userId, long voucherId, long price){
+    return Voucher.builder()
+        .id(voucherId)
+        .finalPrice(price-1000)
+        .value(0)
+        .voucherTypeName(VoucherType.discount)
+        .build();
+//    return Voucher.builder()
+//        .id(voucherId)
+//        .finalPrice(price)
+//        .value(1000)
+//        .voucherTypeName(VoucherType.cashback)
+//        .build();
+  }
+
+  private Voucher getVoucher(long id){
+    Voucher voucher = null;
     try {
-      RPCClient rpcClient = new RPCClient(url,"getBalance");
-      if (!rpcClient.call(String.valueOf(id)).equals("user not found")){
-        return true;
+      RPCClient rpcClient = new RPCClient(url,"getVoucherDetail");
+      voucher = objectMapper.readValue(rpcClient.call(String.valueOf(id)),Voucher.class);
+      if (voucher!=null){
+        //TO-DOS calculate
       }
     } catch (Exception e) {
       e.printStackTrace();
     }
-    return false;
+    return voucher;
   }
 }
