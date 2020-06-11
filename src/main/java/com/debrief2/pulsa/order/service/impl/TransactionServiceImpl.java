@@ -18,7 +18,6 @@ import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -230,18 +229,15 @@ public class TransactionServiceImpl implements TransactionService {
         .build();
   }
 
-  private TransactionOverviewResponse transactionResponseToTransactionOverviewResponseAdapter(TransactionResponse transactionResponse){
-    long voucher = 0;
-    if (transactionResponse.getVoucher()!=null){
-      voucher = transactionResponse.getCatalog().getPrice() - transactionResponse.getVoucher().getFinalPrice();
-    }
+  private TransactionOverviewResponse transactionDTOtoTransactionOverviewResponseAdapter(TransactionDTO transactionDTO){
+    PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
     return TransactionOverviewResponse.builder()
-        .id(transactionResponse.getId())
-        .phoneNumber(transactionResponse.getPhoneNumber())
-        .price(transactionResponse.getCatalog().getPrice())
-        .voucher(voucher)
-        .status(transactionResponse.getStatus().name())
-        .createdAt(transactionResponse.getCreatedAt())
+        .id(transactionDTO.getId())
+        .phoneNumber(transactionDTO.getPhoneNumber())
+        .price(catalog.getPrice())
+        .voucher(transactionDTO.getDeduction())
+        .status(getTransactionStatusNameById(transactionDTO.getStatusId()).name())
+        .createdAt(transactionDTO.getCreatedAt())
         .build();
   }
 
@@ -255,10 +251,6 @@ public class TransactionServiceImpl implements TransactionService {
         .createdAt(transactionDTO.getCreatedAt())
         .updatedAt(transactionDTO.getUpdatedAt())
         .build();
-  }
-
-  private TransactionOverviewResponse transactionDTOtoTransactionOverviewResponseAdapter(TransactionDTO transactionDTO){
-    return transactionResponseToTransactionOverviewResponseAdapter(transactionDTOtoTransactionResponseAdapter(transactionDTO));
   }
 
   private OrderResponse transactionDTOtoOrderResponseAdapter(TransactionDTO transactionDTO){
@@ -303,15 +295,15 @@ public class TransactionServiceImpl implements TransactionService {
 
   private Voucher getVoucher(long id){
     Voucher voucher = null;
-    try {
-      RPCClient rpcClient = new RPCClient(url,"getVoucherDetail");
-      voucher = objectMapper.readValue(rpcClient.call(String.valueOf(id)),Voucher.class);
-      if (voucher!=null){
-        //TO-DOS calculate
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+//    try {
+//      RPCClient rpcClient = new RPCClient(url,"getVoucherDetail");
+//      voucher = objectMapper.readValue(rpcClient.call(String.valueOf(id)),Voucher.class);
+//      if (voucher!=null){
+//        //TO-DOS calculate
+//      }
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
     return voucher;
   }
 }
