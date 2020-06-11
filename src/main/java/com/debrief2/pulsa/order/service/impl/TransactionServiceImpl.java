@@ -13,7 +13,10 @@ import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.service.ProviderService;
 import com.debrief2.pulsa.order.utils.Global;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
+import com.debrief2.pulsa.order.utils.rpc.RPCClient;
+import com.debrief2.pulsa.order.utils.rpc.RPCServer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -26,6 +29,11 @@ public class TransactionServiceImpl implements TransactionService {
   TransactionMapper transactionMapper;
   @Autowired
   ProviderService providerService;
+  @Autowired
+  RPCServer rpcServer;
+
+//  @Value("${cloudAMQP.url}")
+  private String url = "amqp://tfgupaen:DKiggzp1uqZP7do96IFUFgW-SOPNCDl0@emu.rmq.cloudamqp.com/tfgupaen";
 
   @Override
   public TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException {
@@ -38,7 +46,9 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public TransactionResponse getTransactionByIdByUserId(long id, long userId) throws ServiceException {
-    //!!TO-DOs!! validate user exist
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.getTransactionById404);
@@ -47,8 +57,10 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   @Override
-  public List<RecentNumberResponse> getRecentNumber(long userId) {
-    //!!TO-DOs!! validate user exist
+  public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
     for (TransactionDTO transactionDTO:transactionDTOS) {
@@ -74,7 +86,9 @@ public class TransactionServiceImpl implements TransactionService {
     if (tr!=null){
       throw new ServiceException(ResponseMessage.createTransaction409);
     }
-    //!!TO-DOs!! validate user exist
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     if (phoneNumber.charAt(0)!='0'||phoneNumber.length()<9||phoneNumber.length()>13){
       throw new ServiceException(ResponseMessage.createTransaction400phone);
     }
@@ -102,14 +116,18 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   @Override
-  public Transaction pay(long userId, long transactionId, long methodId, long voucherId) {
-    //!!TO-DOs!! validate user exist
+  public Transaction pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     return null;
   }
 
   @Override
   public TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException {
-    //!!TO-DOs!! validate user exist
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.cancelTransaction404);
@@ -133,19 +151,19 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   @Override
-  public List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) {
-    //!!TO-DOs!! validate user exist
+  public List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) throws ServiceException {
     return getHistory(userId,page,TransactionStatusType.IN_PROGRESS);
   }
 
   @Override
-  public List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) {
-    //!!TO-DOs!! validate user exist
+  public List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) throws ServiceException {
     return getHistory(userId,page,TransactionStatusType.COMPLETED);
   }
 
-  private List<TransactionOverviewResponse> getHistory(long userId, long page, TransactionStatusType transactionStatusType){
-    //!!TO-DOs!! validate user exist
+  private List<TransactionOverviewResponse> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
     transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     long offset = (page-1)*10;
@@ -249,5 +267,17 @@ public class TransactionServiceImpl implements TransactionService {
         .phoneNumber(transactionDTO.getPhoneNumber())
         .catalog(pulsaCatalog)
         .build();
+  }
+
+  private boolean isUserExist(long id) {
+    try {
+      RPCClient rpcClient = new RPCClient(url,"getBalance");
+      if (!rpcClient.call(String.valueOf(id)).equals("user not found")){
+        return true;
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return false;
   }
 }

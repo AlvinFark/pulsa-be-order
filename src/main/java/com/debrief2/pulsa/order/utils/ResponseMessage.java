@@ -14,5 +14,6 @@ public class ResponseMessage {
   public static String createTransaction400Unauthorized = "selected catalog is not available for this phone’s provider";
   public static String createTransaction404phone = "unknown phone number";
   public static String createTransaction400phone = "invalid phone number";
+  public static String member404 = "unknown user";
 
 }
