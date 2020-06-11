@@ -22,6 +22,9 @@ public interface TransactionMapper {
   @Update("UPDATE transaction SET statusId=#{expiredId} where userId=#{userId} AND statusId=#{waitingId} AND DATE_ADD(createdAt, INTERVAL #{lifetime} HOUR) < NOW()")
   void refreshStatus(long userId, int lifetime, long expiredId, long waitingId);
 
+  @Update("UPDATE transaction SET statusId=#{expiredId} where id=#{id} AND statusId=#{waitingId} AND DATE_ADD(createdAt, INTERVAL #{lifetime} HOUR) < NOW()")
+  void refreshStatusById(long id, int lifetime, long expiredId, long waitingId);
+
   @Select("SELECT transaction.* FROM transaction INNER JOIN transaction_status ON transaction.statusId = transaction_status.id WHERE userId = #{userId} AND transaction_status.typeId = #{statusTypeId} ORDER BY transaction.createdAt DESC LIMIT #{offset},10")
   List<TransactionDTO> getAllByUserIdAndStatusTypeIdAndOffset(long userId, long statusTypeId, long offset);
 

@@ -16,9 +16,12 @@ public class Voucher {
     private String name;
     private long deduction;
     private long maxDeduction;
+    @JsonIgnore
     private VoucherType voucherTypeName;
     @JsonIgnore
     private long finalPrice;
     @JsonIgnore
     private long value;
+    @JsonIgnore
+    private boolean active;
 }

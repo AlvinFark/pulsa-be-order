@@ -13,7 +13,7 @@ public interface TransactionService {
   TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException;
   List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException;
   OrderResponse createTransaction(long userId, long catalogId, String phone) throws ServiceException;
-  Transaction pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException;
+  PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException;
   TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException;
   List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) throws ServiceException;
   List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) throws ServiceException;

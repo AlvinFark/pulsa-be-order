@@ -8,6 +8,7 @@ import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
 import com.debrief2.pulsa.order.model.enums.VoucherType;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
+import com.debrief2.pulsa.order.payload.request.IssueVoucherRequest;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
 import com.debrief2.pulsa.order.service.TransactionService;
@@ -18,6 +19,7 @@ import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -39,6 +41,8 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException {
+    transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     if (transactionDTO==null){
       throw new ServiceException(ResponseMessage.getTransactionById404);
@@ -51,6 +55,8 @@ public class TransactionServiceImpl implements TransactionService {
     if (!isUserExist(userId)){
       throw new ServiceException(ResponseMessage.member404);
     }
+    transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.getTransactionById404);
@@ -115,14 +121,6 @@ public class TransactionServiceImpl implements TransactionService {
     transactionMapper.insert(transactionDTOSend);
     TransactionDTO transactionDTO = transactionMapper.getById(transactionDTOSend.getId());
     return transactionDTOtoOrderResponseAdapter(transactionDTO);
-  }
-
-  @Override
-  public Transaction pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
-    if (!isUserExist(userId)){
-      throw new ServiceException(ResponseMessage.member404);
-    }
-    return null;
   }
 
   @Override
@@ -215,8 +213,18 @@ public class TransactionServiceImpl implements TransactionService {
     return transactionStatusType.ordinal()+1;
   }
 
-  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO){
-    Voucher voucher = getVoucher(transactionDTO.getVoucherId());
+  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO) {
+    Voucher voucher = null;
+    if (transactionDTO.getVoucherId()!=0){
+      voucher = getVoucher(transactionDTO.getVoucherId());
+    }
+    return transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher);
+  }
+
+  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO, Voucher voucher){
+    if (voucher!=null&&voucher.getVoucherTypeName()==VoucherType.discount){
+      voucher.setDeduction(transactionDTO.getDeduction());
+    }
     return TransactionResponse.builder()
         .id(transactionDTO.getId())
         .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
@@ -263,7 +271,97 @@ public class TransactionServiceImpl implements TransactionService {
         .build();
   }
 
+  @Override
+  public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
+    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    if (!isUserExist(userId)){
+      throw new ServiceException(ResponseMessage.member404);
+    }
+    Voucher voucher = null;
+    if (voucherId!=0){
+      voucher = getVoucher(voucherId);
+      if (voucher==null||!voucher.isActive()){
+        throw new ServiceException(ResponseMessage.pay404voucher);
+      }
+    }
+    PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
+    if (paymentMethod==null){
+      throw new ServiceException(ResponseMessage.pay404method);
+    }
+    TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
+    if (transactionDTO==null||transactionDTO.getUserId()!=userId
+        ||getTransactionStatusNameById(transactionDTO.getStatusId())!=TransactionStatusName.WAITING){
+      throw new ServiceException(ResponseMessage.pay404transaction);
+    }
+    transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
+    transactionMapper.update(transactionDTO);
+    PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
+    if (voucherId!=0){
+      Voucher redeemed = redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
+      transactionDTO.setDeduction(catalog.getPrice()-redeemed.getFinalPrice());
+    }
+    long balance = getBalance(userId);
+    if (catalog.getPrice()-transactionDTO.getDeduction()>balance){
+      if (voucherId!=0){
+        unRedeem(userId,voucherId);
+      }
+      throw new ServiceException(ResponseMessage.pay400);
+    }
+    String decreaseMessage = decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+    if (!decreaseMessage.equals("success")){
+      if (voucherId!=0){
+        unRedeem(userId,voucherId);
+      }
+      throw new ServiceException(decreaseMessage);
+    }
+    HttpStatus response = sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
+    if (response==HttpStatus.ACCEPTED){
+      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.COMPLETED));
+      boolean isEligibleToGetVoucher = false;
+      if (voucherId==0){
+        isEligibleToGetVoucher = eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
+          catalog.getProvider().getId(), voucherId, methodId);
+      }
+      transactionMapper.update(transactionDTO);
+      if (isEligibleToGetVoucher){
+        issue(userId, catalog.getPrice()-transactionDTO.getDeduction(),
+            catalog.getProvider().getId(), voucherId, methodId);
+      }
+      return new PayResponse(balance-(catalog.getPrice()-transactionDTO.getDeduction()),
+          isEligibleToGetVoucher,transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher));
+    }
+    if (response==HttpStatus.BAD_REQUEST){
+      increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+      unRedeem(userId,voucherId);
+      transactionDTO.setVoucherId(0);
+      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
+      transactionMapper.update(transactionDTO);
+      return new PayResponse(balance,false,transactionDTOtoTransactionResponseAdapter(transactionDTO));
+    } else {
+      return new PayResponse(balance-(catalog.getPrice()-transactionDTO.getDeduction()),
+          false,transactionDTOtoTransactionResponseAdapter(transactionDTO));
+    }
+  }
+
   ///////////////////////////////////////////// RPC Calls /////////////////////////////////////////////
+
+  private boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId){
+//    try {
+//      IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
+//      RPCClient rpcClient = new RPCClient(url,"eligibleToGetVoucher");
+//      return objectMapper.readValue(rpcClient.call(objectMapper.writeValueAsString(request)),Boolean.class);
+//    } catch (Exception e) {
+//      return false;
+//    }
+    return true;
+  }
+
+  private HttpStatus sendTopUpRequestTo3rdPartyServer(String phoneNumber, PulsaCatalog catalog){
+    return HttpStatus.ACCEPTED;
+//    return HttpStatus.BAD_REQUEST;
+//    return HttpStatus.INTERNAL_SERVER_ERROR;
+  }
 
   private boolean isUserExist(long id) {
 //    try {
@@ -278,7 +376,53 @@ public class TransactionServiceImpl implements TransactionService {
     return true;
   }
 
-  private Voucher redeem(long userId, long voucherId, long price){
+  private long getBalance(long id) {
+//    try {
+//      RPCClient rpcClient = new RPCClient(url,"getBalance");
+//      return Long.parseLong(rpcClient.call(String.valueOf(id)));
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
+    return 24500;
+  }
+
+  private String decreaseBalance(long idUser, long value){
+//    try {
+//      BalanceRequest request = new BalanceRequest(idUser,value);
+//      RPCClient rpcClient = new RPCClient(url,"decreaseBalance");
+//      return rpcClient.call(objectMapper.writeValueAsString(request));
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
+//    return "error";
+    return "success";
+  }
+
+  private void increaseBalance(long idUser, long value){
+//    try {
+//      BalanceRequest request = new BalanceRequest(idUser,value);
+//      RPCClient rpcClient = new RPCClient(url,"increaseBalance");
+//    !!!persistent!!!
+//      rpcClient.call(objectMapper.writeValueAsString(request));
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
+  }
+
+  private Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws ServiceException{
+//    String message = null;
+//    try {
+//      RPCClient rpcClient = new RPCClient(url,"redeem");
+//      message = rpcClient.call(objectMapper.writeValueAsString(new RedeemRequest(userId,voucherId,price,paymentMethodId,providerId)));
+//      Voucher voucher = objectMapper.readValue(message,Voucher.class);
+//      if (voucher!=null){
+//        return voucher;
+//      }
+//    } catch (JsonProcessingException e) {
+//      throw new ServiceException(message);
+//    } catch (Exception e){
+//      return null;
+//    }
     return Voucher.builder()
         .id(voucherId)
         .finalPrice(price-1000)
@@ -293,17 +437,51 @@ public class TransactionServiceImpl implements TransactionService {
 //        .build();
   }
 
-  private Voucher getVoucher(long id){
-    Voucher voucher = null;
+  private void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId){
 //    try {
-//      RPCClient rpcClient = new RPCClient(url,"getVoucherDetail");
-//      voucher = objectMapper.readValue(rpcClient.call(String.valueOf(id)),Voucher.class);
-//      if (voucher!=null){
-//        //TO-DOS calculate
-//      }
+//      IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
+//      !!!WITH PERSISTENT!!!
+//      RPCClient rpcClient = new RPCClient(url,"issue");
+//      rpcClient.call(objectMapper.writeValueAsString(request));
 //    } catch (Exception e) {
 //      e.printStackTrace();
 //    }
-    return voucher;
+  }
+
+  private void unRedeem(long userId, long voucherId){
+//    try {
+//      UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
+//      !!!WITH PERSISTENT!!!
+//      RPCClient rpcClient = new RPCClient(url,"unredeem");
+//      rpcClient.call(objectMapper.writeValueAsString(request));
+//    } catch (Exception e) {
+//      e.printStackTrace();
+//    }
+  }
+
+  private Voucher getVoucher(long id){
+//    try {
+//      RPCClient rpcClient = new RPCClient(url,"getVoucherDetail");
+//      Voucher voucher = objectMapper.readValue(rpcClient.call(String.valueOf(id)),Voucher.class);
+//      if (voucher!=null){
+//        return voucher;
+//      }
+//    } catch (Exception e) {
+//    }
+//    return null;
+//    return Voucher.builder()
+//        .id(1)
+//        .name("voucher diskon")
+//        .maxDeduction(10000)
+//        .voucherTypeName(VoucherType.discount)
+//        .active(true)
+//        .build();
+    return Voucher.builder()
+        .id(1)
+        .name("voucher cashback")
+        .maxDeduction(0)
+        .voucherTypeName(VoucherType.cashback)
+        .active(true)
+        .build();
   }
 }

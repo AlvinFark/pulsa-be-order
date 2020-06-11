@@ -15,5 +15,8 @@ public class ResponseMessage {
   public static String createTransaction404phone = "unknown phone number";
   public static String createTransaction400phone = "invalid phone number";
   public static String member404 = "unknown user";
-
+  public static String pay404transaction = "unknown transaction";
+  public static String pay404voucher = "unknown voucher";
+  public static String pay404method = "unknown method";
+  public static String pay400 = "not enough balance";
 }
