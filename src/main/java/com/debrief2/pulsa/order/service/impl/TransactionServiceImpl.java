@@ -273,17 +273,13 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
+    //!!!!tmp for mocking
+    balanceStatic = 24500;
+
     transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     if (!isUserExist(userId)){
       throw new ServiceException(ResponseMessage.member404);
-    }
-    Voucher voucher = null;
-    if (voucherId!=0){
-      voucher = getVoucher(voucherId);
-      if (voucher==null||!voucher.isActive()){
-        throw new ServiceException(ResponseMessage.pay404voucher);
-      }
     }
     PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
     if (paymentMethod==null){
@@ -297,15 +293,19 @@ public class TransactionServiceImpl implements TransactionService {
     transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
     transactionMapper.update(transactionDTO);
     PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
+    Voucher voucher = null;
     if (voucherId!=0){
       Voucher redeemed = redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
+      voucher = getVoucher(voucherId);
+      voucher.setValue(redeemed.getValue());
       transactionDTO.setDeduction(catalog.getPrice()-redeemed.getFinalPrice());
     }
-    long balance = getBalance(userId);
-    if (catalog.getPrice()-transactionDTO.getDeduction()>balance){
+    if (catalog.getPrice()-transactionDTO.getDeduction()>getBalance(userId)){
       if (voucherId!=0){
         unRedeem(userId,voucherId);
       }
+      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
+      transactionMapper.update(transactionDTO);
       throw new ServiceException(ResponseMessage.pay400);
     }
     String decreaseMessage = decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
@@ -313,6 +313,8 @@ public class TransactionServiceImpl implements TransactionService {
       if (voucherId!=0){
         unRedeem(userId,voucherId);
       }
+      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
+      transactionMapper.update(transactionDTO);
       throw new ServiceException(decreaseMessage);
     }
     HttpStatus response = sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
@@ -324,22 +326,26 @@ public class TransactionServiceImpl implements TransactionService {
           catalog.getProvider().getId(), voucherId, methodId);
       }
       transactionMapper.update(transactionDTO);
+      if (voucher!=null){
+        increaseBalance(userId,voucher.getValue());
+      }
       if (isEligibleToGetVoucher){
         issue(userId, catalog.getPrice()-transactionDTO.getDeduction(),
             catalog.getProvider().getId(), voucherId, methodId);
       }
-      return new PayResponse(balance-(catalog.getPrice()-transactionDTO.getDeduction()),
+      return new PayResponse(getBalance(userId),
           isEligibleToGetVoucher,transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher));
     }
     if (response==HttpStatus.BAD_REQUEST){
       increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
       unRedeem(userId,voucherId);
       transactionDTO.setVoucherId(0);
+      transactionDTO.setDeduction(0);
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
       transactionMapper.update(transactionDTO);
-      return new PayResponse(balance,false,transactionDTOtoTransactionResponseAdapter(transactionDTO));
+      return new PayResponse(getBalance(userId),false,transactionDTOtoTransactionResponseAdapter(transactionDTO));
     } else {
-      return new PayResponse(balance-(catalog.getPrice()-transactionDTO.getDeduction()),
+      return new PayResponse(getBalance(userId)-(catalog.getPrice()-transactionDTO.getDeduction()),
           false,transactionDTOtoTransactionResponseAdapter(transactionDTO));
     }
   }
@@ -376,6 +382,7 @@ public class TransactionServiceImpl implements TransactionService {
     return true;
   }
 
+  private static long balanceStatic = 24500;
   private long getBalance(long id) {
 //    try {
 //      RPCClient rpcClient = new RPCClient(url,"getBalance");
@@ -383,30 +390,32 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (Exception e) {
 //      e.printStackTrace();
 //    }
-    return 24500;
+    return balanceStatic;
   }
 
-  private String decreaseBalance(long idUser, long value){
+  private String decreaseBalance(long userId, long value){
 //    try {
-//      BalanceRequest request = new BalanceRequest(idUser,value);
+//      BalanceRequest request = new BalanceRequest(userId,value);
 //      RPCClient rpcClient = new RPCClient(url,"decreaseBalance");
 //      return rpcClient.call(objectMapper.writeValueAsString(request));
 //    } catch (Exception e) {
 //      e.printStackTrace();
 //    }
 //    return "error";
+    balanceStatic -= value;
     return "success";
   }
 
-  private void increaseBalance(long idUser, long value){
+  private void increaseBalance(long userId, long value){
 //    try {
-//      BalanceRequest request = new BalanceRequest(idUser,value);
+//      BalanceRequest request = new BalanceRequest(userId,value);
 //      RPCClient rpcClient = new RPCClient(url,"increaseBalance");
 //    !!!persistent!!!
 //      rpcClient.call(objectMapper.writeValueAsString(request));
 //    } catch (Exception e) {
 //      e.printStackTrace();
 //    }
+    balanceStatic +=value;
   }
 
   private Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws ServiceException{
@@ -423,18 +432,18 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (Exception e){
 //      return null;
 //    }
-    return Voucher.builder()
-        .id(voucherId)
-        .finalPrice(price-1000)
-        .value(0)
-        .voucherTypeName(VoucherType.discount)
-        .build();
 //    return Voucher.builder()
 //        .id(voucherId)
-//        .finalPrice(price)
-//        .value(1000)
-//        .voucherTypeName(VoucherType.cashback)
+//        .finalPrice(price-1000)
+//        .value(0)
+//        .voucherTypeName(VoucherType.discount)
 //        .build();
+    return Voucher.builder()
+        .id(voucherId)
+        .finalPrice(price)
+        .value(1000)
+        .voucherTypeName(VoucherType.cashback)
+        .build();
   }
 
   private void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId){
