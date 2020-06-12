@@ -1,9 +1,7 @@
 package com.debrief2.pulsa.order.service;
 
 import com.debrief2.pulsa.order.exception.ServiceException;
-import com.debrief2.pulsa.order.model.*;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
-import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
 import com.debrief2.pulsa.order.payload.response.*;
 
 import java.util.List;
@@ -18,4 +16,6 @@ public interface TransactionService {
   List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) throws ServiceException;
   List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) throws ServiceException;
   PaymentMethodName getPaymentMethodNameById(long id);
+
+  void tmpDebugging();
 }
