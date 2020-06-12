@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
@@ -72,7 +73,7 @@ public class TransactionServiceImpl implements TransactionService {
     try {
       return transactionDTOtoTransactionResponseAdapter(transactionDTO);
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage()+" when try to get detail voucher");
     }
   }
 
@@ -354,9 +355,9 @@ public class TransactionServiceImpl implements TransactionService {
             transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
             transactionMapper.update(transactionDTO);
             unRedeem(userId,voucherId);
-            throw new ServiceException(f.getMessage()+" when try to get voucher details, your voucher has been redeemed");
+            throw new ServiceException(f.getMessage()+" when try to get voucher details, voucher has been redeemed");
           } catch (ServiceUnreachableException | OtherServiceException g) {
-            throw new ServiceException(f.getMessage()+" when try to get voucher details, and failed to unredeem voucher, please contact our customer service");
+            throw new ServiceException(f.getMessage()+" when try to get voucher details, and failed to unredeem voucher");
           }
         }
         voucher.setValue(redeemed.getValue());
@@ -387,7 +388,7 @@ public class TransactionServiceImpl implements TransactionService {
             unRedeem(userId,voucherId);
           } catch (ServiceUnreachableException | OtherServiceException e) {
             e.printStackTrace();
-            throw new ServiceException(e.getMessage() + " when try to unredeem your voucher, please contact our customer service");
+            throw new ServiceException(ResponseMessage.pay400 + ", and " + e.getMessage() + " when try to unredeem voucher");
           }
         }
         throw new ServiceException(ResponseMessage.pay400);
@@ -417,10 +418,10 @@ public class TransactionServiceImpl implements TransactionService {
           unRedeem(userId,voucherId);
         } catch (ServiceUnreachableException | OtherServiceException f) {
           e.printStackTrace();
-          throw new ServiceException(f.getMessage() + " when try to unredeem your voucher, please contact our customer service");
+          throw new ServiceException(f.getMessage() + " when try to unredeem voucher, when try to decrease balance failed");
         }
       }
-      throw new ServiceException(e.getMessage() + " when try to decrease your balance");
+      throw new ServiceException(e.getMessage() + " when try to decrease balance");
     }
 
     //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
@@ -535,6 +536,8 @@ public class TransactionServiceImpl implements TransactionService {
   private boolean userExist(long id) throws ServiceUnreachableException, OtherServiceException {
     try {
       return !RPCClient.call(memberUrl,"getBalance",String.valueOf(id)).equals("user not found");
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
     } catch (Exception e) {
@@ -547,6 +550,8 @@ public class TransactionServiceImpl implements TransactionService {
     try {
       String response = RPCClient.call(memberUrl,"getBalance",String.valueOf(id));
       return Long.parseLong(response.substring(1,response.length()-1));
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
     } catch (Exception e) {
@@ -562,6 +567,8 @@ public class TransactionServiceImpl implements TransactionService {
       if (!message.equals("\"success\"")){
         throw new OtherServiceException(message);
       }
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
     } catch (Exception e) {
@@ -575,6 +582,8 @@ public class TransactionServiceImpl implements TransactionService {
       BalanceRequest request = new BalanceRequest(userId,value);
       //switch to persistent later
       RPCClient.call(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
     } catch (Exception e) {
@@ -587,6 +596,8 @@ public class TransactionServiceImpl implements TransactionService {
     try {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
       return objectMapper.readValue(RPCClient.call(promotionUrl,"eligibleToGetVoucher",objectMapper.writeValueAsString(request)),Boolean.class);
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     } catch (Exception e) {
@@ -603,6 +614,8 @@ public class TransactionServiceImpl implements TransactionService {
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       throw new OtherServiceException(message);
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     } catch (Exception e) {
@@ -616,6 +629,8 @@ public class TransactionServiceImpl implements TransactionService {
       UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
       //switch into persistent
       RPCClient.call(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     } catch (Exception e) {
@@ -629,6 +644,8 @@ public class TransactionServiceImpl implements TransactionService {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
       //switch into persistent
       RPCClient.call(promotionUrl,"issue",objectMapper.writeValueAsString(request));
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     } catch (Exception e) {
@@ -644,6 +661,8 @@ public class TransactionServiceImpl implements TransactionService {
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       return null;
+    } catch (IOException e) {
+      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     } catch (Exception e) {

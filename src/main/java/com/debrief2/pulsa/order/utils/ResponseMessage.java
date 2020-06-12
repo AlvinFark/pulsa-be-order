@@ -19,5 +19,7 @@ public class ResponseMessage {
   public static String pay404method = "unknown method";
   public static String pay400 = "not enough balance";
   public static String memberConnection = "member service unreachable";
+  public static String memberIO = "connection to member service rejected";
   public static String promotionConnection = "promotion service unreachable";
+  public static String promotionIO = "connection to promotion service rejected";
 }
