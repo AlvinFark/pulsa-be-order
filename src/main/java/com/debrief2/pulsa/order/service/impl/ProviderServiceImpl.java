@@ -70,8 +70,7 @@ public class ProviderServiceImpl implements ProviderService {
     }
   }
 
-  @Override
-  public void checkAllCache(){
+  private void checkAllCache(){
     if (mapProviderById.isEmpty()||mapProviderIdByPrefix.isEmpty()||mapCatalogDTOById.isEmpty()
         ||mapListCatalogResponseByProviderId.isEmpty()){
       reloadProvider();
@@ -92,7 +91,6 @@ public class ProviderServiceImpl implements ProviderService {
     }
   }
 
-  @Override
   public List<PulsaCatalogResponse> getCatalogResponseByProviderId(long providerId) {
     checkAllCache();
     try {
@@ -131,7 +129,7 @@ public class ProviderServiceImpl implements ProviderService {
         .price(catalogDTO.getPrice())
         .deletedAt(catalogDTO.getDeletedAt())
         .build();
-  };
+  }
 
   @Override
   public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {

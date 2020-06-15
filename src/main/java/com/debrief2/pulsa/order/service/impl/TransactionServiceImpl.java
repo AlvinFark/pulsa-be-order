@@ -1,36 +1,31 @@
 package com.debrief2.pulsa.order.service.impl;
 
 import com.debrief2.pulsa.order.exception.OtherServiceException;
-import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
-import com.debrief2.pulsa.order.model.*;
 import com.debrief2.pulsa.order.exception.ServiceException;
+import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
+import com.debrief2.pulsa.order.model.Provider;
+import com.debrief2.pulsa.order.model.PulsaCatalog;
+import com.debrief2.pulsa.order.model.Transaction;
+import com.debrief2.pulsa.order.model.Voucher;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
-import com.debrief2.pulsa.order.model.enums.VoucherType;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
-import com.debrief2.pulsa.order.payload.request.BalanceRequest;
-import com.debrief2.pulsa.order.payload.request.IssueVoucherRequest;
-import com.debrief2.pulsa.order.payload.request.RedeemRequest;
-import com.debrief2.pulsa.order.payload.request.UnRedeemRequest;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
-import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.service.ProviderService;
+import com.debrief2.pulsa.order.service.RPCService;
+import com.debrief2.pulsa.order.service.TransactionAdapter;
+import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.utils.Global;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
-import com.debrief2.pulsa.order.utils.rpc.RPCClient;
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeoutException;
 
 @Service
 public class TransactionServiceImpl implements TransactionService {
@@ -39,26 +34,31 @@ public class TransactionServiceImpl implements TransactionService {
   TransactionMapper transactionMapper;
   @Autowired
   ProviderService providerService;
+  @Autowired
+  RPCService rpcService;
+  @Autowired
+  TransactionAdapter transactionAdapter;
 
-  private final String promotionUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
-  private final String memberUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
-  ObjectMapper objectMapper = new ObjectMapper();
-
+  //for promotion service
   @Override
-  public TransactionResponseWithMethodId getTransactionById(long id) throws ServiceException {
+  public TransactionWithMethodId getTransactionById(long id) throws ServiceException {
+    //first refresh transaction status if this transaction
     transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    //get the transaction
     TransactionDTO transactionDTO = transactionMapper.getById(id);
+    //return not found if received null as response
     if (transactionDTO==null){
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
-    return transactionDTOtoTransactionResponseWithMethodIdAdapter(transactionDTO);
+    //return the transaction that has been converted to transaction model
+    return transactionAdapter.transactionDTOtoTransactionWithMethodIdAdapter(transactionDTO);
   }
 
   @Override
-  public TransactionResponse getTransactionByIdByUserId(long id, long userId) throws ServiceException {
+  public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
     try {
-      if (!userExist(userId)){
+      if (!rpcService.userExist(userId)){
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -70,17 +70,21 @@ public class TransactionServiceImpl implements TransactionService {
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
+    Voucher voucher = null;
     try {
-      return transactionDTOtoTransactionResponseAdapter(transactionDTO);
+      if (transactionDTO.getVoucherId()!=0){
+        voucher = rpcService.getVoucher(transactionDTO.getVoucherId());
+      }
     } catch (ServiceUnreachableException | OtherServiceException e) {
       throw new ServiceException(e.getMessage()+" when try to get detail voucher");
     }
+    return transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher);
   }
 
   @Override
   public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
     try {
-      if (!userExist(userId)){
+      if (!rpcService.userExist(userId)){
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -112,7 +116,7 @@ public class TransactionServiceImpl implements TransactionService {
       throw new ServiceException(ResponseMessage.createTransaction409);
     }
     try {
-      if (!userExist(userId)){
+      if (!rpcService.userExist(userId)){
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -141,13 +145,13 @@ public class TransactionServiceImpl implements TransactionService {
         .build();
     transactionMapper.insert(transactionDTOSend);
     TransactionDTO transactionDTO = transactionMapper.getById(transactionDTOSend.getId());
-    return transactionDTOtoOrderResponseAdapter(transactionDTO);
+    return transactionAdapter.transactionDTOtoOrderResponseAdapter(transactionDTO);
   }
 
   @Override
-  public TransactionResponseNoVoucher cancel(long userId, long transactionId) throws ServiceException {
+  public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
     try {
-      if (!userExist(userId)){
+      if (!rpcService.userExist(userId)){
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -164,7 +168,7 @@ public class TransactionServiceImpl implements TransactionService {
     transactionDTO.setVoucherId(0);
     transactionMapper.update(transactionDTO);
     TransactionDTO td = transactionMapper.getById(transactionId);
-    return TransactionResponseNoVoucher.builder()
+    return TransactionNoVoucher.builder()
         .id(td.getId())
         .method(getPaymentMethodNameById(td.getMethodId()))
         .phoneNumber(td.getPhoneNumber())
@@ -172,130 +176,6 @@ public class TransactionServiceImpl implements TransactionService {
         .status(getTransactionStatusNameById(td.getStatusId()))
         .createdAt(td.getCreatedAt())
         .updatedAt(td.getUpdatedAt())
-        .build();
-  }
-
-  @Override
-  public List<TransactionOverviewResponse> getHistoryInProgress(long userId, long page) throws ServiceException {
-    return getHistory(userId,page,TransactionStatusType.IN_PROGRESS);
-  }
-
-  @Override
-  public List<TransactionOverviewResponse> getHistoryCompleted(long userId, long page) throws ServiceException {
-    return getHistory(userId,page,TransactionStatusType.COMPLETED);
-  }
-
-  private List<TransactionOverviewResponse> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
-    try {
-      if (!userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
-    transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
-    long offset = (page-1)*10;
-    List<TransactionDTO> transactionDTOS = transactionMapper.getAllByUserIdAndStatusTypeIdAndOffset(userId,getIdByTransactionStatusType(transactionStatusType),offset);
-    List<TransactionOverviewResponse> transactionOverviewResponses = new ArrayList<>();
-    for (TransactionDTO transactionDTO:transactionDTOS) {
-      transactionOverviewResponses.add(transactionDTOtoTransactionOverviewResponseAdapter(transactionDTO));
-    }
-    return transactionOverviewResponses;
-  }
-
-  @Override
-  public PaymentMethodName getPaymentMethodNameById(long id){
-    try {
-      return PaymentMethodName.values()[(int) id - 1];
-    } catch (ArrayIndexOutOfBoundsException e) {
-      return null;
-    }
-  }
-
-  private long getIdByPaymentMethodName(PaymentMethodName paymentMethodName){
-    return paymentMethodName.ordinal()+1;
-  }
-
-  private TransactionStatusName getTransactionStatusNameById(long id){
-    try {
-      return TransactionStatusName.values()[(int) id-1];
-    } catch (ArrayIndexOutOfBoundsException e) {
-      return null;
-    }
-  }
-
-  private long getIdByTransactionStatusName(TransactionStatusName transactionStatusName){
-    return transactionStatusName.ordinal()+1;
-  }
-
-  private TransactionStatusType getTransactionStatusTypeById(long id){
-    try {
-      return TransactionStatusType.values()[(int) id-1];
-    } catch (ArrayIndexOutOfBoundsException e) {
-      return null;
-    }
-  }
-
-  private long getIdByTransactionStatusType(TransactionStatusType transactionStatusType){
-    return transactionStatusType.ordinal()+1;
-  }
-
-  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO) throws ServiceUnreachableException, OtherServiceException {
-    Voucher voucher = null;
-    if (transactionDTO.getVoucherId()!=0){
-      voucher = getVoucher(transactionDTO.getVoucherId());
-    }
-    return transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher);
-  }
-
-  private TransactionResponse transactionDTOtoTransactionResponseAdapter(TransactionDTO transactionDTO, Voucher voucher){
-    if (voucher!=null&&voucher.getVoucherTypeName()==VoucherType.discount){
-      voucher.setDeduction(transactionDTO.getDeduction());
-    }
-    return TransactionResponse.builder()
-        .id(transactionDTO.getId())
-        .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
-        .phoneNumber(transactionDTO.getPhoneNumber())
-        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-        .voucher(voucher)
-        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
-        .createdAt(transactionDTO.getCreatedAt())
-        .updatedAt(transactionDTO.getUpdatedAt())
-        .build();
-  }
-
-  private TransactionOverviewResponse transactionDTOtoTransactionOverviewResponseAdapter(TransactionDTO transactionDTO){
-    PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
-    return TransactionOverviewResponse.builder()
-        .id(transactionDTO.getId())
-        .phoneNumber(transactionDTO.getPhoneNumber())
-        .price(catalog.getPrice())
-        .voucher(transactionDTO.getDeduction())
-        .status(getTransactionStatusNameById(transactionDTO.getStatusId()).name())
-        .createdAt(transactionDTO.getCreatedAt())
-        .build();
-  }
-
-  private TransactionResponseWithMethodId transactionDTOtoTransactionResponseWithMethodIdAdapter(TransactionDTO transactionDTO){
-    return TransactionResponseWithMethodId.builder()
-        .id(transactionDTO.getId())
-        .methodId(transactionDTO.getMethodId())
-        .phoneNumber(transactionDTO.getPhoneNumber())
-        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
-        .createdAt(transactionDTO.getCreatedAt())
-        .updatedAt(transactionDTO.getUpdatedAt())
-        .build();
-  }
-
-  private OrderResponse transactionDTOtoOrderResponseAdapter(TransactionDTO transactionDTO){
-    PulsaCatalogDTO pulsaCatalogDTO = providerService.getCatalogDTObyId(transactionDTO.getCatalogId());
-    PulsaCatalog pulsaCatalog = providerService.catalogDTOToCatalogAdapter(pulsaCatalogDTO);
-    return OrderResponse.builder()
-        .id(transactionDTO.getId())
-        .phoneNumber(transactionDTO.getPhoneNumber())
-        .catalog(pulsaCatalog)
         .build();
   }
 
@@ -308,7 +188,7 @@ public class TransactionServiceImpl implements TransactionService {
     //check user exist, if not return not exist
     //if error because other service, return error message and do nothing
     try {
-      if (!userExist(userId)){
+      if (!rpcService.userExist(userId)){
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -347,14 +227,14 @@ public class TransactionServiceImpl implements TransactionService {
     Voucher voucher = null;
     if (voucherId!=0){
       try {
-        Voucher redeemed = redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
+        Voucher redeemed = rpcService.redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
         try {
-          voucher = getVoucher(voucherId);
+          voucher = rpcService.getVoucher(voucherId);
         } catch (ServiceUnreachableException | OtherServiceException f){
           try {
             transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
             transactionMapper.update(transactionDTO);
-            unRedeem(userId,voucherId);
+            rpcService.unRedeem(userId,voucherId);
             throw new ServiceException(f.getMessage()+" when try to get voucher details, voucher has been redeemed");
           } catch (ServiceUnreachableException | OtherServiceException g) {
             throw new ServiceException(f.getMessage()+" when try to get voucher details, and failed to unredeem voucher");
@@ -375,9 +255,9 @@ public class TransactionServiceImpl implements TransactionService {
     //if not enough and using voucher try to unredeem, the details of error same as before
     //if not enough also revert transaction and send error not enough balance
     //the balance saved in case of further error
-    long balance = 0;
+    long balance;
     try {
-      balance = getBalance(userId);
+      balance = rpcService.getBalance(userId);
       if (catalog.getPrice()-transactionDTO.getDeduction()>balance){
         transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
         transactionDTO.setVoucherId(0);
@@ -385,7 +265,7 @@ public class TransactionServiceImpl implements TransactionService {
         transactionMapper.update(transactionDTO);
         if (voucherId!=0){
           try {
-            unRedeem(userId,voucherId);
+            rpcService.unRedeem(userId,voucherId);
           } catch (ServiceUnreachableException | OtherServiceException e) {
             e.printStackTrace();
             throw new ServiceException(ResponseMessage.pay400 + ", and " + e.getMessage() + " when try to unredeem voucher");
@@ -406,7 +286,7 @@ public class TransactionServiceImpl implements TransactionService {
     //if error revert transaction and unredeem voucher if using voucher
     //if unredeeming error, same as before
     try {
-      decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+      rpcService.decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
       balance -= catalog.getPrice()-transactionDTO.getDeduction();
     } catch (ServiceUnreachableException | OtherServiceException e) {
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
@@ -415,7 +295,7 @@ public class TransactionServiceImpl implements TransactionService {
       transactionMapper.update(transactionDTO);
       if (voucherId!=0){
         try {
-          unRedeem(userId,voucherId);
+          rpcService.unRedeem(userId,voucherId);
         } catch (ServiceUnreachableException | OtherServiceException f) {
           e.printStackTrace();
           throw new ServiceException(f.getMessage() + " when try to unredeem voucher, when try to decrease balance failed");
@@ -438,8 +318,8 @@ public class TransactionServiceImpl implements TransactionService {
       boolean isEligibleToGetVoucher = false;
       if (voucherId==0){
         try {
-          isEligibleToGetVoucher = eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
-            catalog.getProvider().getId(), voucherId, methodId);
+          isEligibleToGetVoucher = rpcService.eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
+              catalog.getProvider().getId(), voucherId, methodId);
           callIssueVoucher = isEligibleToGetVoucher;
         } catch (ServiceUnreachableException | OtherServiceException e) {
           e.printStackTrace();
@@ -454,7 +334,7 @@ public class TransactionServiceImpl implements TransactionService {
       //do nothing (again because the return format)
       if (voucherId!=0&&voucher.getValue()>0){
         try {
-          increaseBalance(userId,voucher.getValue());
+          rpcService.increaseBalance(userId,voucher.getValue());
           balance += voucher.getValue();
         } catch (ServiceUnreachableException | OtherServiceException e) {
           e.printStackTrace();
@@ -463,7 +343,7 @@ public class TransactionServiceImpl implements TransactionService {
       //issue voucher if possible to get one, persistent so less likely to get error
       if (callIssueVoucher){
         try {
-          issue(userId, catalog.getPrice()-transactionDTO.getDeduction(),
+          rpcService.issue(userId, catalog.getPrice()-transactionDTO.getDeduction(),
               catalog.getProvider().getId(), voucherId, methodId);
         } catch (ServiceUnreachableException | OtherServiceException e) {
           e.printStackTrace();
@@ -473,11 +353,11 @@ public class TransactionServiceImpl implements TransactionService {
       //return details transaction, whether get voucher or not, and updated balance
       //if after all this process, failed to  get actual balance, the balance saved before would come in handy
       try {
-        return new PayResponse(getBalance(userId),
-            isEligibleToGetVoucher,transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher));
+        return new PayResponse(rpcService.getBalance(userId),
+            isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
       } catch (ServiceUnreachableException | OtherServiceException e) {
         return new PayResponse(balance,
-            isEligibleToGetVoucher,transactionDTOtoTransactionResponseAdapter(transactionDTO,voucher));
+            isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
       }
     }
 
@@ -490,13 +370,13 @@ public class TransactionServiceImpl implements TransactionService {
       transactionMapper.update(transactionDTO);
       //increase balance back and unredeem voucher back persistently
       try {
-        increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+        rpcService.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
         balance += catalog.getPrice()-transactionDTO.getDeduction();
       } catch (ServiceUnreachableException | OtherServiceException e) {
         e.printStackTrace();
       }
       try {
-        unRedeem(userId,voucherId);
+        rpcService.unRedeem(userId,voucherId);
       } catch (ServiceUnreachableException | OtherServiceException e) {
         e.printStackTrace();
       }
@@ -504,170 +384,75 @@ public class TransactionServiceImpl implements TransactionService {
 
     //the return for failed is the same format as rejected
     try {
-      return new PayResponse(getBalance(userId),false,transactionDTOtoTransactionResponseAdapter(transactionDTO,null));
+      return new PayResponse(rpcService.getBalance(userId),false, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,null));
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      return new PayResponse(balance,false,transactionDTOtoTransactionResponseAdapter(transactionDTO,null));
+      return new PayResponse(balance,false, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,null));
     }
   }
 
-  /////////////////////////////////////////// 3rd Party Calls //////////////////////////////////////////
+  @Override
+  public List<TransactionOverview> getHistoryInProgress(long userId, long page) throws ServiceException {
+    return getHistory(userId,page,TransactionStatusType.IN_PROGRESS);
+  }
 
+  @Override
+  public List<TransactionOverview> getHistoryCompleted(long userId, long page) throws ServiceException {
+    return getHistory(userId,page,TransactionStatusType.COMPLETED);
+  }
+
+  private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
+    try {
+      if (!rpcService.userExist(userId)){
+        throw new ServiceException(ResponseMessage.member404);
+      }
+    } catch (ServiceUnreachableException | OtherServiceException e) {
+      throw new ServiceException(e.getMessage()+" when try to check user exist");
+    }
+    transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    long offset = (page-1)*10;
+    List<TransactionDTO> transactionDTOS = transactionMapper.getAllByUserIdAndStatusTypeIdAndOffset(userId,getIdByTransactionStatusType(transactionStatusType),offset);
+    List<TransactionOverview> transactionOverview = new ArrayList<>();
+    for (TransactionDTO transactionDTO:transactionDTOS) {
+      transactionOverview.add(transactionAdapter.transactionDTOtoTransactionOverviewAdapter(transactionDTO));
+    }
+    return transactionOverview;
+  }
+
+  @Override
+  public PaymentMethodName getPaymentMethodNameById(long id){
+    try {
+      return PaymentMethodName.values()[(int) id - 1];
+    } catch (ArrayIndexOutOfBoundsException e) {
+      return null;
+    }
+  }
+
+  private long getIdByPaymentMethodName(PaymentMethodName paymentMethodName){
+    return paymentMethodName.ordinal()+1;
+  }
+
+  @Override
+  public TransactionStatusName getTransactionStatusNameById(long id){
+    try {
+      return TransactionStatusName.values()[(int) id-1];
+    } catch (ArrayIndexOutOfBoundsException e) {
+      return null;
+    }
+  }
+
+  private long getIdByTransactionStatusName(TransactionStatusName transactionStatusName){
+    return transactionStatusName.ordinal()+1;
+  }
+
+  private long getIdByTransactionStatusType(TransactionStatusType transactionStatusType){
+    return transactionStatusType.ordinal()+1;
+  }
+
+  /////////////////////////////////////////// 3rd Party Calls //////////////////////////////////////////
   private HttpStatus sendTopUpRequestTo3rdPartyServer(String phoneNumber, PulsaCatalog catalog){
     return HttpStatus.ACCEPTED;
 //    return HttpStatus.BAD_REQUEST;
 //    return HttpStatus.INTERNAL_SERVER_ERROR;
-  }
-
-  ///////////////////////////////////////////// RPC Calls /////////////////////////////////////////////
-
-  @Override
-  public void tmpDebugging(){
-    try {
-      OrderResponse orderResponse = createTransaction(1,14, "085200872725");
-      System.out.println(orderResponse.toString());
-      PayResponse payResponse = pay(1, orderResponse.getId(), 1, 0);
-      System.out.println(payResponse.toString());
-    } catch (ServiceException e) {
-      e.printStackTrace();
-      System.out.println(e.getMessage());
-    }
-  }
-
-  private boolean userExist(long id) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      return !RPCClient.call(memberUrl,"getBalance",String.valueOf(id)).equals("user not found");
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private long getBalance(long id) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      String response = RPCClient.call(memberUrl,"getBalance",String.valueOf(id));
-      return Long.parseLong(response.substring(1,response.length()-1));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private void decreaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      BalanceRequest request = new BalanceRequest(userId,value);
-      String message = RPCClient.call(memberUrl,"decreaseBalance",objectMapper.writeValueAsString(request));
-      if (!message.equals("\"success\"")){
-        throw new OtherServiceException(message);
-      }
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private void increaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      BalanceRequest request = new BalanceRequest(userId,value);
-      //switch to persistent later
-      RPCClient.call(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
-      return objectMapper.readValue(RPCClient.call(promotionUrl,"eligibleToGetVoucher",objectMapper.writeValueAsString(request)),Boolean.class);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws OtherServiceException, ServiceUnreachableException {
-    String message = "";
-    try {
-      RedeemRequest request = new RedeemRequest(userId,voucherId,price,paymentMethodId,providerId);
-      message = RPCClient.call(promotionUrl,"redeem",objectMapper.writeValueAsString(request));
-      return objectMapper.readValue(message,Voucher.class);
-    } catch (JsonParseException e) {
-      throw new OtherServiceException(message);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private void unRedeem(long userId, long voucherId) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
-      //switch into persistent
-      RPCClient.call(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
-    try {
-      IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
-      //switch into persistent
-      RPCClient.call(promotionUrl,"issue",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
-  }
-
-  private Voucher getVoucher(long id) throws ServiceUnreachableException, OtherServiceException {
-    String message = "";
-    try {
-      message = RPCClient.call(promotionUrl,"getVoucherDetail",String.valueOf(id));
-      return objectMapper.readValue(message,Voucher.class);
-    } catch (JsonParseException e) {
-      return null;
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
   }
 }

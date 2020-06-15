@@ -11,7 +11,7 @@ import java.util.Date;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TransactionOverviewResponse {
+public class TransactionOverview {
   private long id;
   private String phoneNumber;
   private long price;

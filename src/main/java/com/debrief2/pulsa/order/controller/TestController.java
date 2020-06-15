@@ -2,6 +2,7 @@ package com.debrief2.pulsa.order.controller;
 
 import com.debrief2.pulsa.order.exception.ServiceException;
 import com.debrief2.pulsa.order.model.Provider;
+import com.debrief2.pulsa.order.model.Transaction;
 import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
 import com.debrief2.pulsa.order.payload.request.CreateTransactionRequest;
 import com.debrief2.pulsa.order.payload.request.TesterRequest;
@@ -17,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,7 +38,7 @@ public class TestController {
   @PostMapping("/")
   public ResponseEntity<?> forTester(@RequestBody TesterRequest testerRequest){
     String message = testerRequest.getMessage();
-    String response = "";
+    String response;
     try {
       switch (testerRequest.getMethod()){
         case "getAllCatalog":
@@ -51,7 +51,7 @@ public class TestController {
           break;
         case "cancel":
           TransactionRequest request = objectMapper.readValue(message, TransactionRequest.class);
-          TransactionResponseNoVoucher transaction = transactionService.cancel(request.getUserId(), request.getTransactionId());
+          TransactionNoVoucher transaction = transactionService.cancel(request.getUserId(), request.getTransactionId());
           response = objectMapper.writeValueAsString(transaction);
           break;
         case "getProviderById":
@@ -69,22 +69,22 @@ public class TestController {
           }
           break;
         case "getTransactionById":
-          TransactionResponseWithMethodId transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
+          TransactionWithMethodId transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
           response = objectMapper.writeValueAsString(transactionResponse);
           break;
         case "getTransactionByIdByUserId":
           TransactionRequest request2 = objectMapper.readValue(message, TransactionRequest.class);
-          TransactionResponse transactionResponse2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
-          response = objectMapper.writeValueAsString(transactionResponse2);
+          Transaction transaction2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
+          response = objectMapper.writeValueAsString(transaction2);
           break;
         case "getHistoryInProgress":
           TransactionHistoryRequest historyRequest = objectMapper.readValue(message, TransactionHistoryRequest.class);
-          List<TransactionOverviewResponse> overviewResponses = transactionService.getHistoryInProgress(historyRequest.getUserId(),historyRequest.getPage());
+          List<TransactionOverview> overviewResponses = transactionService.getHistoryInProgress(historyRequest.getUserId(),historyRequest.getPage());
           response = objectMapper.writeValueAsString(overviewResponses);
           break;
         case "getHistoryCompleted":
           TransactionHistoryRequest historyRequest2 = objectMapper.readValue(message, TransactionHistoryRequest.class);
-          List<TransactionOverviewResponse> overviewResponses2 = transactionService.getHistoryCompleted(historyRequest2.getUserId(),historyRequest2.getPage());
+          List<TransactionOverview> overviewResponses2 = transactionService.getHistoryCompleted(historyRequest2.getUserId(),historyRequest2.getPage());
           response = objectMapper.writeValueAsString(overviewResponses2);
           break;
         case "createTransaction":

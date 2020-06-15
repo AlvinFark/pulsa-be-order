@@ -8,11 +8,11 @@ import com.debrief2.pulsa.order.payload.request.CreateTransactionRequest;
 import com.debrief2.pulsa.order.payload.request.TransactionHistoryRequest;
 import com.debrief2.pulsa.order.payload.request.TransactionRequest;
 import com.debrief2.pulsa.order.payload.response.*;
-import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.service.ProviderService;
+import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.rabbitmq.client.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +64,7 @@ public class RPCServer {
             .correlationId(delivery.getProperties().getCorrelationId())
             .build();
 
-        String response = "";
+        String response;
         String message = new String(delivery.getBody(), StandardCharsets.UTF_8);
         log.info("["+queueName+"] receiving request for "+message);
 
@@ -80,7 +80,7 @@ public class RPCServer {
               break;
             case "cancel":
               TransactionRequest request = objectMapper.readValue(message, TransactionRequest.class);
-              TransactionResponseNoVoucher transaction = transactionService.cancel(request.getUserId(), request.getTransactionId());
+              TransactionNoVoucher transaction = transactionService.cancel(request.getUserId(), request.getTransactionId());
               response = objectMapper.writeValueAsString(transaction);
               break;
             case "getProviderById":
@@ -98,22 +98,22 @@ public class RPCServer {
               }
               break;
             case "getTransactionById":
-              TransactionResponseWithMethodId transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
+              TransactionWithMethodId transactionResponse = transactionService.getTransactionById(Long.parseLong(message));
               response = objectMapper.writeValueAsString(transactionResponse);
               break;
             case "getTransactionByIdByUserId":
               TransactionRequest request2 = objectMapper.readValue(message, TransactionRequest.class);
-              TransactionResponse transactionResponse2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
-              response = objectMapper.writeValueAsString(transactionResponse2);
+              Transaction transaction2 = transactionService.getTransactionByIdByUserId(request2.getTransactionId(), request2.getUserId());
+              response = objectMapper.writeValueAsString(transaction2);
               break;
             case "getHistoryInProgress":
               TransactionHistoryRequest historyRequest = objectMapper.readValue(message, TransactionHistoryRequest.class);
-              List<TransactionOverviewResponse> overviewResponses = transactionService.getHistoryInProgress(historyRequest.getUserId(),historyRequest.getPage());
+              List<TransactionOverview> overviewResponses = transactionService.getHistoryInProgress(historyRequest.getUserId(),historyRequest.getPage());
               response = objectMapper.writeValueAsString(overviewResponses);
               break;
             case "getHistoryCompleted":
               TransactionHistoryRequest historyRequest2 = objectMapper.readValue(message, TransactionHistoryRequest.class);
-              List<TransactionOverviewResponse> overviewResponses2 = transactionService.getHistoryCompleted(historyRequest2.getUserId(),historyRequest2.getPage());
+              List<TransactionOverview> overviewResponses2 = transactionService.getHistoryCompleted(historyRequest2.getUserId(),historyRequest2.getPage());
               response = objectMapper.writeValueAsString(overviewResponses2);
               break;
             case "createTransaction":
@@ -132,7 +132,7 @@ public class RPCServer {
           }
         } catch (ServiceException serviceException) {
           response = serviceException.getMessage();
-        } catch (InvalidFormatException|NumberFormatException e) {
+        } catch (NumberFormatException|JsonProcessingException e) {
           response = ResponseMessage.generic400;
         }
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));

@@ -1,5 +1,7 @@
 package com.debrief2.pulsa.order.model;
 
+import com.debrief2.pulsa.order.model.enums.PaymentMethodName;
+import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,12 +15,11 @@ import java.util.Date;
 @AllArgsConstructor
 public class Transaction {
   private long id;
-//  private User user;
-  private PaymentMethod method;
+  private PaymentMethodName method;
   private String phoneNumber;
   private PulsaCatalog catalog;
-//  private Voucher voucher;
-  private TransactionStatus status;
+  private Voucher voucher;
+  private TransactionStatusName status;
   private Date createdAt;
   private Date updatedAt;
 }

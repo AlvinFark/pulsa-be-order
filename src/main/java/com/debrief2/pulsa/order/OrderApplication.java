@@ -1,7 +1,6 @@
 package com.debrief2.pulsa.order;
 
 import com.debrief2.pulsa.order.service.TransactionService;
-import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.debrief2.pulsa.order.utils.rpc.RPCServer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
