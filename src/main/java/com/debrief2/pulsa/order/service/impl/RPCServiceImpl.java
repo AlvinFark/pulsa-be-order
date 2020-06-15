@@ -58,7 +58,7 @@ public class RPCServiceImpl implements RPCService {
     try {
       BalanceRequest request = new BalanceRequest(userId,value);
       String message = RPCClient.call(memberUrl,"decreaseBalance",objectMapper.writeValueAsString(request));
-      if (!message.equals("\"success\"")){
+      if (!(message.equals("\"success\"")||message.equals("success"))){
         throw new OtherServiceException(message);
       }
     } catch (IOException e) {
