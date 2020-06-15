@@ -57,13 +57,13 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
+//    try {
+//      if (!rpcService.userExist(userId)){
+//        throw new ServiceException(ResponseMessage.member404);
+//      }
+//    } catch (ServiceUnreachableException | OtherServiceException e) {
+//      throw new ServiceException(e.getMessage()+" when try to check user exist");
+//    }
     transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     TransactionDTO transactionDTO = transactionMapper.getById(id);
@@ -83,13 +83,13 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
+//    try {
+//      if (!rpcService.userExist(userId)){
+//        throw new ServiceException(ResponseMessage.member404);
+//      }
+//    } catch (ServiceUnreachableException | OtherServiceException e) {
+//      throw new ServiceException(e.getMessage()+" when try to check user exist");
+//    }
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
     for (TransactionDTO transactionDTO:transactionDTOS) {
@@ -115,13 +115,13 @@ public class TransactionServiceImpl implements TransactionService {
     if (tr!=null){
       throw new ServiceException(ResponseMessage.createTransaction409);
     }
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
+//    try {
+//      if (!rpcService.userExist(userId)){
+//        throw new ServiceException(ResponseMessage.member404);
+//      }
+//    } catch (ServiceUnreachableException | OtherServiceException e) {
+//      throw new ServiceException(e.getMessage()+" when try to check user exist");
+//    }
     if (phoneNumber.charAt(0)!='0'||phoneNumber.length()<9||phoneNumber.length()>13){
       throw new ServiceException(ResponseMessage.createTransaction400phone);
     }
@@ -150,13 +150,13 @@ public class TransactionServiceImpl implements TransactionService {
 
   @Override
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
+//    try {
+//      if (!rpcService.userExist(userId)){
+//        throw new ServiceException(ResponseMessage.member404);
+//      }
+//    } catch (ServiceUnreachableException | OtherServiceException e) {
+//      throw new ServiceException(e.getMessage()+" when try to check user exist");
+//    }
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.cancelTransaction404);
@@ -401,13 +401,13 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
-    }
+//    try {
+//      if (!rpcService.userExist(userId)){
+//        throw new ServiceException(ResponseMessage.member404);
+//      }
+//    } catch (ServiceUnreachableException | OtherServiceException e) {
+//      throw new ServiceException(e.getMessage()+" when try to check user exist");
+//    }
     transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
     long offset = (page-1)*10;
