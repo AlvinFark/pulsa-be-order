@@ -40,8 +40,8 @@ public class TransactionServiceImpl implements TransactionService {
   @Autowired
   ProviderService providerService;
 
-  private final String promotionUrl = "amqp://tfgupaen:DKiggzp1uqZP7do96IFUFgW-SOPNCDl0@emu.rmq.cloudamqp.com/tfgupaen";
-  private final String memberUrl = "amqp://lbfcxugj:eW3yKsOA0FIKKBSzuQz3dVyx5izT0C-8@toad.rmq.cloudamqp.com/lbfcxugj";
+  private final String promotionUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
+  private final String memberUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
   ObjectMapper objectMapper = new ObjectMapper();
 
   @Override
