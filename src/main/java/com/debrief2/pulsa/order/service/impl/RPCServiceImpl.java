@@ -26,8 +26,16 @@ public class RPCServiceImpl implements RPCService {
 
   @Override
   public boolean userExist(long id) throws ServiceUnreachableException, OtherServiceException {
+    String response = "";
     try {
-      return !RPCClient.call(memberUrl,"getBalance",String.valueOf(id)).equals("user not found");
+      response = RPCClient.call(memberUrl,"getBalance",String.valueOf(id));
+      Long.parseLong(response.substring(1, response.length() - 1));
+      return true;
+    } catch (NumberFormatException e) {
+      if (response.equals("user not found")){
+        return false;
+      }
+      throw new OtherServiceException(response);
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
@@ -40,9 +48,12 @@ public class RPCServiceImpl implements RPCService {
 
   @Override
   public long getBalance(long id) throws ServiceUnreachableException, OtherServiceException {
+    String response = null;
     try {
-      String response = RPCClient.call(memberUrl,"getBalance",String.valueOf(id));
-      return Long.parseLong(response.substring(1,response.length()-1));
+      response = RPCClient.call(memberUrl, "getBalance", String.valueOf(id));
+      return Long.parseLong(response.substring(1, response.length() - 1));
+    } catch (NumberFormatException e) {
+      throw new OtherServiceException(response);
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
