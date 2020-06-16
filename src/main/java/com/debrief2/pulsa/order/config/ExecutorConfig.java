@@ -24,9 +24,9 @@ public class ExecutorConfig {
   @Bean(name = "workerExecutor")
   public Executor workerExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(25);
+    executor.setCorePoolSize(15);
     executor.setMaxPoolSize(25);
-    executor.setQueueCapacity(1000);
+    executor.setQueueCapacity(10000);
     executor.setThreadNamePrefix("Worker-");
     executor.initialize();
     return executor;
