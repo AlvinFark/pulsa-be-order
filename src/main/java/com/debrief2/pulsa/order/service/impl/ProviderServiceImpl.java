@@ -73,7 +73,7 @@ public class ProviderServiceImpl implements ProviderService {
 
   private void checkAllCache(){
     //check whether any of the map empty, do reload if true
-    if (mapProviderById.isEmpty()||mapProviderIdByPrefix.isEmpty()||mapCatalogDTOById.isEmpty()||mapListCatalogResponseByProviderId.isEmpty()){
+    if (mapProviderById.isEmpty()||mapProviderIdByPrefix.isEmpty()||mapCatalogDTOById.isEmpty() ||mapListCatalogResponseByProviderId.isEmpty()){
       reloadProvider();
       CompletableFuture<Void> asyncReloadCatalog = asyncAdapter.reloadCatalog();
       CompletableFuture<Void> asyncReloadPrefix = asyncAdapter.reloadPrefix();
@@ -85,21 +85,33 @@ public class ProviderServiceImpl implements ProviderService {
   public Provider getProviderByPrefix(String prefix) {
     //check first, then get from memory
     checkAllCache();
-    long providerId = mapProviderIdByPrefix.get(prefix);
-    return mapProviderById.get(providerId);
+    try {
+      long providerId = mapProviderIdByPrefix.get(prefix);
+      return mapProviderById.get(providerId);
+    } catch (NullPointerException e){
+      return null;
+    }
   }
 
   public List<PulsaCatalogResponse> getCatalogResponseByProviderId(long providerId) {
     //check first, then get from memory
     checkAllCache();
-    return mapListCatalogResponseByProviderId.get(providerId);
+    try {
+      return mapListCatalogResponseByProviderId.get(providerId);
+    } catch (NullPointerException e){
+      return null;
+    }
   }
 
   @Override
   public PulsaCatalogDTO getCatalogDTObyId(long id) {
     //check first, then get from memory
     checkAllCache();
-    return mapCatalogDTOById.get(id);
+    try {
+      return mapCatalogDTOById.get(id);
+    } catch (NullPointerException e){
+      return null;
+    }
   }
 
   @Override
