@@ -14,10 +14,7 @@ import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
-import com.debrief2.pulsa.order.service.ProviderService;
-import com.debrief2.pulsa.order.service.RPCService;
-import com.debrief2.pulsa.order.service.TransactionAdapter;
-import com.debrief2.pulsa.order.service.TransactionService;
+import com.debrief2.pulsa.order.service.*;
 import com.debrief2.pulsa.order.utils.Global;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,18 +42,22 @@ public class TransactionServiceImpl implements TransactionService {
     //first refresh transaction status if this transaction
     transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+
     //get the transaction
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     //return not found if received null as response
     if (transactionDTO==null){
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
-    //return the transaction that has been converted to transaction model
+
+    //return the transaction that has been converted to transaction model, this adapter also get catalog and provider detail
     return transactionAdapter.transactionDTOtoTransactionWithMethodIdAdapter(transactionDTO);
   }
 
+  //when user check details of transaction
   @Override
   public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
+    //validate user exist
 //    try {
 //      if (!rpcService.userExist(userId)){
 //        throw new ServiceException(ResponseMessage.member404);
@@ -64,12 +65,20 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (ServiceUnreachableException | OtherServiceException e) {
 //      throw new ServiceException(e.getMessage()+" when try to check user exist");
 //    }
+
+    //refresh status so that it will updated if expired
     transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+
+    //get the transaction
     TransactionDTO transactionDTO = transactionMapper.getById(id);
+    //return if null or not user's transaction
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
+
+    //get the details for voucher
+    //if error from calling other service, just sent error message since it's the method not changing anything
     Voucher voucher = null;
     try {
       if (transactionDTO.getVoucherId()!=0){
@@ -78,11 +87,15 @@ public class TransactionServiceImpl implements TransactionService {
     } catch (ServiceUnreachableException | OtherServiceException e) {
       throw new ServiceException(e.getMessage()+" when try to get detail voucher");
     }
+
+    //return the transaction details, this adapter also get catalog and provider detail
     return transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher);
   }
 
+  //when user open mobile recharge page, they'll see their history of numbers the've used before as recommendation
   @Override
   public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
+    //validate user exist
 //    try {
 //      if (!rpcService.userExist(userId)){
 //        throw new ServiceException(ResponseMessage.member404);
@@ -90,14 +103,22 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (ServiceUnreachableException | OtherServiceException e) {
 //      throw new ServiceException(e.getMessage()+" when try to check user exist");
 //    }
+
+    //get 10 latest created transaction from db
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
+    //placeholder for returned data
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
+
+    //for each transaction, get the detail provider and wrap it into return format
+    //it doesn't matter if provider is soft deleted since it's a history kind a thing
     for (TransactionDTO transactionDTO:transactionDTOS) {
       Provider provider = providerService.getProviderByPrefix(transactionDTO.getPhoneNumber().substring(1,5));
       RecentNumberResponse recentNumberResponse = RecentNumberResponse.builder()
           .number(transactionDTO.getPhoneNumber())
           .provider(provider)
           .build();
+      //this is to make frontend job easier, they can set the view from date data which is derived from updatedAt
+      //or createdAt if not updated at data
       if (transactionDTO.getUpdatedAt()==null){
         recentNumberResponse.setDate(transactionDTO.getCreatedAt());
       } else {
@@ -105,16 +126,24 @@ public class TransactionServiceImpl implements TransactionService {
       }
       recentNumberResponses.add(recentNumberResponse);
     }
+
+    //return it. No error message for empty data just empty array as requested from frontend
     return recentNumberResponses;
   }
 
+  //when user clicked on top up option it will automatically create order
   @Override
   public OrderResponse createTransaction(long userId, long catalogId, String phoneNumber) throws ServiceException {
+
+    //check if similar transaction already created within 30 seconds, for possible mistake or other reasons
+    //return error message if exist
     TransactionDTO tr = transactionMapper.checkExistWithin30second(userId,phoneNumber,catalogId,
         getIdByPaymentMethodName(PaymentMethodName.WALLET),getIdByTransactionStatusName(TransactionStatusName.WAITING));
     if (tr!=null){
       throw new ServiceException(ResponseMessage.createTransaction409);
     }
+
+    //validate user
 //    try {
 //      if (!rpcService.userExist(userId)){
 //        throw new ServiceException(ResponseMessage.member404);
@@ -122,20 +151,34 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (ServiceUnreachableException | OtherServiceException e) {
 //      throw new ServiceException(e.getMessage()+" when try to check user exist");
 //    }
-    if (phoneNumber.charAt(0)!='0'||phoneNumber.length()<9||phoneNumber.length()>13){
+    //validate phone number
+    if (phoneNumber.length()<9||phoneNumber.length()>13||phoneNumber.charAt(0)!='0'){
       throw new ServiceException(ResponseMessage.createTransaction400phone);
     }
+    try {
+      Long.parseLong(phoneNumber.substring(1));
+    } catch (NumberFormatException e){
+      throw new ServiceException(ResponseMessage.createTransaction400phone);
+    }
+
+    //get provider by using the phone's prefix, if not exist or deleted return error
     Provider provider = providerService.getProviderByPrefix(phoneNumber.substring(1,5));
     if (provider==null||provider.getDeletedAt()!=null){
       throw new ServiceException(ResponseMessage.createTransaction404phone);
     }
+
+    //get catalog detail, if not exist or soft deleted return error
     PulsaCatalogDTO pulsaCatalogDTO = providerService.getCatalogDTObyId(catalogId);
     if (pulsaCatalogDTO==null||pulsaCatalogDTO.getDeletedAt()!=null) {
       throw new ServiceException(ResponseMessage.createTransaction404catalog);
     }
+
+    //if catalog is not for this phone, return error
     if (pulsaCatalogDTO.getProviderId()!=provider.getId()){
       throw new ServiceException(ResponseMessage.createTransaction400Unauthorized);
     }
+
+    //send it to db
     TransactionDTO transactionDTOSend = TransactionDTO.builder()
         .userId(userId)
         .methodId(getIdByPaymentMethodName(PaymentMethodName.WALLET))
@@ -144,12 +187,16 @@ public class TransactionServiceImpl implements TransactionService {
         .statusId(getIdByTransactionStatusName(TransactionStatusName.WAITING))
         .build();
     transactionMapper.insert(transactionDTOSend);
+
+    //return the details, the id will be automatically updated by mybatis
     TransactionDTO transactionDTO = transactionMapper.getById(transactionDTOSend.getId());
     return transactionAdapter.transactionDTOtoOrderResponseAdapter(transactionDTO);
   }
 
+  //for when user clicked on cancel
   @Override
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
+    //validate user exist
 //    try {
 //      if (!rpcService.userExist(userId)){
 //        throw new ServiceException(ResponseMessage.member404);
@@ -157,17 +204,32 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (ServiceUnreachableException | OtherServiceException e) {
 //      throw new ServiceException(e.getMessage()+" when try to check user exist");
 //    }
+
+    //refresh transaction status
+    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+
+    //if null or not user's transaction send error
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
       throw new ServiceException(ResponseMessage.cancelTransaction404);
     }
+
+    //if transaction is not in waiting state return error message
     if (transactionDTO.getStatusId()!= getIdByTransactionStatusName(TransactionStatusName.WAITING)){
       throw new ServiceException(ResponseMessage.cancelTransaction400);
     }
+
+    //update to the database
     transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.CANCELED));
     transactionDTO.setVoucherId(0);
     transactionMapper.update(transactionDTO);
+    System.out.println(transactionDTO);
+
+    //need to get updated at detail from db
     TransactionDTO td = transactionMapper.getById(transactionId);
+
+    //return
     return TransactionNoVoucher.builder()
         .id(td.getId())
         .method(getPaymentMethodNameById(td.getMethodId()))
@@ -179,12 +241,9 @@ public class TransactionServiceImpl implements TransactionService {
         .build();
   }
 
+  //when user click pay
   @Override
   public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
-    //refresh transaction status
-    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
-
     //check user exist, if not return not exist
     //if error because other service, return error message and do nothing
     try {
@@ -194,6 +253,10 @@ public class TransactionServiceImpl implements TransactionService {
     } catch (ServiceUnreachableException | OtherServiceException e) {
       throw new ServiceException(e.getMessage()+" when try to check user exist");
     }
+
+    //refresh transaction status
+    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
 
     //check method valid
     PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
@@ -390,17 +453,21 @@ public class TransactionServiceImpl implements TransactionService {
     }
   }
 
+  //just wrapper so it's easier to call from mobile domain
   @Override
   public List<TransactionOverview> getHistoryInProgress(long userId, long page) throws ServiceException {
     return getHistory(userId,page,TransactionStatusType.IN_PROGRESS);
   }
 
+  //just wrapper so it's easier to call from mobile domain
   @Override
   public List<TransactionOverview> getHistoryCompleted(long userId, long page) throws ServiceException {
     return getHistory(userId,page,TransactionStatusType.COMPLETED);
   }
 
+  //the real flow when user check on history
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
+    //validate user
 //    try {
 //      if (!rpcService.userExist(userId)){
 //        throw new ServiceException(ResponseMessage.member404);
@@ -408,16 +475,30 @@ public class TransactionServiceImpl implements TransactionService {
 //    } catch (ServiceUnreachableException | OtherServiceException e) {
 //      throw new ServiceException(e.getMessage()+" when try to check user exist");
 //    }
+
+    //refresh transaction for this user
     transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+
+    //calculate the offset
     long offset = (page-1)*10;
+
+    //get the data by parameters
     List<TransactionDTO> transactionDTOS = transactionMapper.getAllByUserIdAndStatusTypeIdAndOffset(userId,getIdByTransactionStatusType(transactionStatusType),offset);
+
+    //convert into accepted format, no validation for catalog etc since the data are from db and even
+    //if the data soft deleted, it's still better to show since it's a history thing
     List<TransactionOverview> transactionOverview = new ArrayList<>();
     for (TransactionDTO transactionDTO:transactionDTOS) {
       transactionOverview.add(transactionAdapter.transactionDTOtoTransactionOverviewAdapter(transactionDTO));
     }
+
+    //return, same as recent number, no error if empty just return empty array
     return transactionOverview;
   }
+
+  ////////////////////////////////// HELPER ////////////////////////////////////
+  //these are just helper for easier extraction of data from enums
 
   @Override
   public PaymentMethodName getPaymentMethodNameById(long id){

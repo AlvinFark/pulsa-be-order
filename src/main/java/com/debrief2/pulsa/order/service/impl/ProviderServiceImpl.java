@@ -64,6 +64,7 @@ public class ProviderServiceImpl implements ProviderService {
   public void reloadPrefix(){
     //get from db
     List<ProviderPrefixDTO> providerPrefixDTOS = providerMapper.getAllPrefix();
+    //save into map
     mapProviderIdByPrefix = new HashMap<>();
     for (ProviderPrefixDTO providerPrefixDTO:providerPrefixDTOS){
       mapProviderIdByPrefix.put(providerPrefixDTO.getPrefix(),providerPrefixDTO.getProviderId());
@@ -71,6 +72,7 @@ public class ProviderServiceImpl implements ProviderService {
   }
 
   private void checkAllCache(){
+    //check whether any of the map empty, do reload if true
     if (mapProviderById.isEmpty()||mapProviderIdByPrefix.isEmpty()||mapCatalogDTOById.isEmpty()
         ||mapListCatalogResponseByProviderId.isEmpty()){
       reloadProvider();
@@ -82,6 +84,7 @@ public class ProviderServiceImpl implements ProviderService {
 
   @Override
   public Provider getProviderByPrefix(String prefix) {
+    //check first, then get from memory
     checkAllCache();
     try {
       long providerId = mapProviderIdByPrefix.get(prefix);
@@ -92,6 +95,7 @@ public class ProviderServiceImpl implements ProviderService {
   }
 
   public List<PulsaCatalogResponse> getCatalogResponseByProviderId(long providerId) {
+    //check first, then get from memory
     checkAllCache();
     try {
       return mapListCatalogResponseByProviderId.get(providerId);
@@ -102,6 +106,7 @@ public class ProviderServiceImpl implements ProviderService {
 
   @Override
   public PulsaCatalogDTO getCatalogDTObyId(long id) {
+    //check first, then get from memory
     checkAllCache();
     try {
       return mapCatalogDTOById.get(id);
@@ -112,6 +117,7 @@ public class ProviderServiceImpl implements ProviderService {
 
   @Override
   public Provider getProviderById(long id) {
+    //check first, then get from memory
     checkAllCache();
     try {
       return mapProviderById.get(id);
