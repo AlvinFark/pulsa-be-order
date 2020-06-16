@@ -20,6 +20,7 @@ import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -133,6 +134,7 @@ public class TransactionServiceImpl implements TransactionService {
 
   //when user clicked on top up option it will automatically create order
   @Override
+  @Transactional
   public OrderResponse createTransaction(long userId, long catalogId, String phoneNumber) throws ServiceException {
 
     //check if similar transaction already created within 30 seconds, for possible mistake or other reasons
@@ -195,6 +197,7 @@ public class TransactionServiceImpl implements TransactionService {
 
   //for when user clicked on cancel
   @Override
+  @Transactional
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
     //validate user exist
     try {
@@ -243,6 +246,7 @@ public class TransactionServiceImpl implements TransactionService {
 
   //when user click pay
   @Override
+  @Transactional
   public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
     //check user exist, if not return not exist
     //if error because other service, return error message and do nothing
@@ -467,6 +471,11 @@ public class TransactionServiceImpl implements TransactionService {
 
   //the real flow when user check on history
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
+    //validate page
+    if (page<1){
+      throw new ServiceException(ResponseMessage.generic400);
+    }
+
     //validate user
     try {
       if (!rpcService.userExist(userId)){
