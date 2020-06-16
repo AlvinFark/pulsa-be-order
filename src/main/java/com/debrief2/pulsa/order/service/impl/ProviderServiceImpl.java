@@ -99,7 +99,7 @@ public class ProviderServiceImpl implements ProviderService {
     try {
       return mapListCatalogResponseByProviderId.get(providerId);
     } catch (NullPointerException e){
-      return null;
+      return new ArrayList<>();
     }
   }
 
@@ -107,11 +107,7 @@ public class ProviderServiceImpl implements ProviderService {
   public PulsaCatalogDTO getCatalogDTObyId(long id) {
     //check first, then get from memory
     checkAllCache();
-    try {
-      return mapCatalogDTOById.get(id);
-    } catch (NullPointerException e){
-      return null;
-    }
+    return mapCatalogDTOById.get(id);
   }
 
   @Override

@@ -105,6 +105,8 @@ public class TestController {
       response = serviceException.getMessage();
     } catch (NumberFormatException | JsonProcessingException e) {
       response = ResponseMessage.generic400;
+    } catch (NullPointerException nullPointerException) {
+      response = "please use the valid 'method' 'message' format";
     }
     return new ResponseEntity<>(response,HttpStatus.OK);
   }
