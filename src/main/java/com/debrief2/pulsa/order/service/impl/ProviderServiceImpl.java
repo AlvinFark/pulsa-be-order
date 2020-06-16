@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -96,11 +97,10 @@ public class ProviderServiceImpl implements ProviderService {
   public List<PulsaCatalogResponse> getCatalogResponseByProviderId(long providerId) {
     //check first, then get from memory
     checkAllCache();
-    try {
-      return mapListCatalogResponseByProviderId.get(providerId);
-    } catch (NullPointerException e){
-      return new ArrayList<>();
+    if (mapListCatalogResponseByProviderId.get(providerId)==null){
+      return Collections.emptyList();
     }
+    return mapListCatalogResponseByProviderId.get(providerId);
   }
 
   @Override
@@ -132,6 +132,11 @@ public class ProviderServiceImpl implements ProviderService {
   public AllPulsaCatalogResponse getAllCatalog(String phone) throws ServiceException {
     //validate format
     if (phone.length()!=5||phone.charAt(0)!='0'){
+      throw new ServiceException(ResponseMessage.getAllCatalog400);
+    }
+    try {
+      Long.parseLong(phone.substring(1));
+    } catch (NumberFormatException e){
       throw new ServiceException(ResponseMessage.getAllCatalog400);
     }
 
