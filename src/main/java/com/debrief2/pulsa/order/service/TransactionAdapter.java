@@ -21,7 +21,7 @@ public class TransactionAdapter {
   ProviderService providerService;
 
   public Transaction transactionDTOtoTransactionAdapter(TransactionDTO transactionDTO, Voucher voucher){
-    if (voucher!=null&&voucher.getVoucherTypeName()== VoucherType.discount){
+    if (voucher!=null&&voucher.getVoucherTypeName()==VoucherType.discount){
       voucher.setDeduction(transactionDTO.getDeduction());
     }
     return Transaction.builder()
@@ -43,7 +43,7 @@ public class TransactionAdapter {
         .phoneNumber(transactionDTO.getPhoneNumber())
         .price(catalog.getPrice())
         .voucher(transactionDTO.getDeduction())
-        .status(transactionService.getTransactionStatusNameById(transactionDTO.getStatusId()).name())
+        .status(transactionService.getTransactionStatusNameById(transactionDTO.getStatusId()))
         .createdAt(transactionDTO.getCreatedAt())
         .build();
   }

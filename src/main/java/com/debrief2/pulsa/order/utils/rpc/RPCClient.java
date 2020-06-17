@@ -1,7 +1,7 @@
 package com.debrief2.pulsa.order.utils.rpc;
 
 import com.rabbitmq.client.*;
-import lombok.Data;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
@@ -9,9 +9,9 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeoutException;
 
-@Data
+@Component
 public class RPCClient {
-  public static String call(String url, String routingKey, String message) throws IOException, TimeoutException, URISyntaxException {
+  public String call(String url, String routingKey, String message) throws IOException, TimeoutException, URISyntaxException {
     final URI rabbitMqUrl = new URI(url);
     ConnectionFactory factory = new ConnectionFactory();
     factory.setUsername(rabbitMqUrl.getUserInfo().split(":")[0]);
@@ -28,7 +28,7 @@ public class RPCClient {
     return new RpcClient(params).stringCall(message);
   }
 
-  public static void persistentCall(String url, String routingKey, String message) throws URISyntaxException, IOException, TimeoutException {
+  public void persistentCall(String url, String routingKey, String message) throws URISyntaxException, IOException, TimeoutException {
     final URI rabbitMqUrl = new URI(url);
     ConnectionFactory factory = new ConnectionFactory();
     factory.setUsername(rabbitMqUrl.getUserInfo().split(":")[0]);

@@ -1,5 +1,6 @@
 package com.debrief2.pulsa.order.payload.response;
 
+import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,6 @@ public class TransactionOverview {
   private String phoneNumber;
   private long price;
   private long voucher;
-  private String status;
+  private TransactionStatusName status;
   private Date createdAt;
 }

@@ -12,6 +12,7 @@ import com.debrief2.pulsa.order.utils.ResponseMessage;
 import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -19,6 +20,9 @@ import java.util.concurrent.TimeoutException;
 
 @Service
 public class RPCServiceImpl implements RPCService {
+
+  @Autowired
+  RPCClient rpcClient;
 
   private final String promotionUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
   private final String memberUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/ynjauqav";
@@ -28,7 +32,7 @@ public class RPCServiceImpl implements RPCService {
   public boolean userExist(long id) throws ServiceUnreachableException, OtherServiceException {
     String response = "";
     try {
-      response = RPCClient.call(memberUrl,"getBalance",String.valueOf(id));
+      response = rpcClient.call(memberUrl,"getBalance",String.valueOf(id));
       Long.parseLong(response.substring(1, response.length() - 1));
       return true;
     } catch (NumberFormatException e) {
@@ -50,7 +54,7 @@ public class RPCServiceImpl implements RPCService {
   public long getBalance(long id) throws ServiceUnreachableException, OtherServiceException {
     String response = null;
     try {
-      response = RPCClient.call(memberUrl, "getBalance", String.valueOf(id));
+      response = rpcClient.call(memberUrl, "getBalance", String.valueOf(id));
       return Long.parseLong(response.substring(1, response.length() - 1));
     } catch (NumberFormatException e) {
       throw new OtherServiceException(response);
@@ -68,7 +72,7 @@ public class RPCServiceImpl implements RPCService {
   public void decreaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException {
     try {
       BalanceRequest request = new BalanceRequest(userId,value);
-      String message = RPCClient.call(memberUrl,"decreaseBalance",objectMapper.writeValueAsString(request));
+      String message = rpcClient.call(memberUrl,"decreaseBalance",objectMapper.writeValueAsString(request));
       if (!(message.equals("\"success\"")||message.equals("success"))){
         throw new OtherServiceException(message);
       }
@@ -87,7 +91,7 @@ public class RPCServiceImpl implements RPCService {
     try {
       BalanceRequest request = new BalanceRequest(userId,value);
       //switch to persistent later
-      RPCClient.call(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
+      rpcClient.call(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberIO);
     } catch (TimeoutException e) {
@@ -102,7 +106,7 @@ public class RPCServiceImpl implements RPCService {
   public boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
     try {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
-      return objectMapper.readValue(RPCClient.call(promotionUrl,"eligibleToGetVoucher",objectMapper.writeValueAsString(request)),Boolean.class);
+      return objectMapper.readValue(rpcClient.call(promotionUrl,"eligibleToGetVoucher",objectMapper.writeValueAsString(request)),Boolean.class);
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
@@ -118,7 +122,7 @@ public class RPCServiceImpl implements RPCService {
     String message = "";
     try {
       RedeemRequest request = new RedeemRequest(userId,voucherId,price,paymentMethodId,providerId);
-      message = RPCClient.call(promotionUrl,"redeem",objectMapper.writeValueAsString(request));
+      message = rpcClient.call(promotionUrl,"redeem",objectMapper.writeValueAsString(request));
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       throw new OtherServiceException(message);
@@ -137,7 +141,7 @@ public class RPCServiceImpl implements RPCService {
     try {
       UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
       //switch into persistent
-      RPCClient.call(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
+      rpcClient.call(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
@@ -153,7 +157,7 @@ public class RPCServiceImpl implements RPCService {
     try {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
       //switch into persistent
-      RPCClient.call(promotionUrl,"issue",objectMapper.writeValueAsString(request));
+      rpcClient.call(promotionUrl,"issue",objectMapper.writeValueAsString(request));
     } catch (IOException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionIO);
     } catch (TimeoutException e) {
@@ -168,7 +172,7 @@ public class RPCServiceImpl implements RPCService {
   public Voucher getVoucher(long id) throws ServiceUnreachableException, OtherServiceException {
     String message;
     try {
-      message = RPCClient.call(promotionUrl,"getVoucherDetail",String.valueOf(id));
+      message = rpcClient.call(promotionUrl,"getVoucherDetail",String.valueOf(id));
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       return null;

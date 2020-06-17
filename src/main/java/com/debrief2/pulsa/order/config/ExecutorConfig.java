@@ -13,8 +13,8 @@ public class ExecutorConfig {
   @Bean(name = "asyncExecutor")
   public Executor asyncExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(10);
-    executor.setMaxPoolSize(10);
+    executor.setCorePoolSize(3);
+    executor.setMaxPoolSize(3);
     executor.setQueueCapacity(1000);
     executor.setThreadNamePrefix("Async-");
     executor.initialize();
@@ -24,8 +24,8 @@ public class ExecutorConfig {
   @Bean(name = "workerExecutor")
   public Executor workerExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(25);
-    executor.setMaxPoolSize(25);
+    executor.setCorePoolSize(11);
+    executor.setMaxPoolSize(11);
     executor.setQueueCapacity(1000);
     executor.setThreadNamePrefix("Worker-");
     executor.initialize();

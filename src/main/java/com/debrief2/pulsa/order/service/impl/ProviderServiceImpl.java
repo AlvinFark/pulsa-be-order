@@ -78,7 +78,7 @@ public class ProviderServiceImpl implements ProviderService {
       reloadProvider();
       CompletableFuture<Void> asyncReloadCatalog = asyncAdapter.reloadCatalog();
       CompletableFuture<Void> asyncReloadPrefix = asyncAdapter.reloadPrefix();
-      CompletableFuture.allOf(asyncReloadCatalog,asyncReloadPrefix);
+      CompletableFuture.allOf(asyncReloadCatalog,asyncReloadPrefix).join();
     }
   }
 
