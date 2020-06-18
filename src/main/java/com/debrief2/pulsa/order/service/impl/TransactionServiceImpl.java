@@ -149,9 +149,8 @@ public class TransactionServiceImpl implements TransactionService {
       RecentNumberResponse recentNumberResponse = RecentNumberResponse.builder()
           .number(transactionDTO.getPhoneNumber())
           .provider(provider)
-          .build();
-      //time by created at
-      recentNumberResponse.setDate(transactionDTO.getCreatedAt());
+          .date(transactionDTO.getCreatedAt())
+          .build();;
       recentNumberResponses.add(recentNumberResponse);
     }
 
@@ -291,18 +290,19 @@ public class TransactionServiceImpl implements TransactionService {
 
     //need to get updated at detail from db
     TransactionDTO td = transactionMapper.getById(transactionId);
+    transactionDTO.setUpdatedAt(td.getUpdatedAt());
 
     //return
     flagTransactionUsedByUser.put(userId,false);
     flagTransactionUsed.put(transactionId,false);
     return TransactionNoVoucher.builder()
-        .id(td.getId())
-        .method(getPaymentMethodNameById(td.getMethodId()))
-        .phoneNumber(td.getPhoneNumber())
-        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(td.getCatalogId())))
-        .status(getTransactionStatusNameById(td.getStatusId()))
-        .createdAt(td.getCreatedAt())
-        .updatedAt(td.getUpdatedAt())
+        .id(transactionDTO.getId())
+        .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
+        .phoneNumber(transactionDTO.getPhoneNumber())
+        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
+        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
+        .createdAt(transactionDTO.getCreatedAt())
+        .updatedAt(transactionDTO.getUpdatedAt())
         .build();
   }
 

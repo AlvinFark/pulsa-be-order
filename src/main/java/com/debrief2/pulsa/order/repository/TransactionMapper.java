@@ -33,5 +33,5 @@ public interface TransactionMapper {
 
   @Insert("INSERT INTO transaction(userId,methodId,phoneNumber,catalogId,statusId) VALUES(#{userId},#{methodId},#{phoneNumber},#{catalogId},#{statusId})")
   @Options(useGeneratedKeys = true, keyProperty = "id")
-  void insert(TransactionDTO transactionDTO);
+  long insert(TransactionDTO transactionDTO);
 }

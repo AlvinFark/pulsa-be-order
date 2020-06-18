@@ -1,6 +1,8 @@
 package com.debrief2.pulsa.order.utils.rpc;
 
 import com.rabbitmq.client.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -11,6 +13,9 @@ import java.util.concurrent.TimeoutException;
 
 @Component
 public class RPCClient {
+
+  private static final Logger log = LoggerFactory.getLogger(RpcServer.class);
+
   public String call(String url, String routingKey, String message) throws IOException, TimeoutException, URISyntaxException {
     final URI rabbitMqUrl = new URI(url);
     ConnectionFactory factory = new ConnectionFactory();
@@ -36,9 +41,14 @@ public class RPCClient {
     factory.setHost(rabbitMqUrl.getHost());
     factory.setPort(rabbitMqUrl.getPort());
     factory.setVirtualHost(rabbitMqUrl.getPath().substring(1));
-    Connection connection = factory.newConnection();
-    Channel channel = connection.createChannel();
-    channel.queueDeclare(routingKey, true, false, false, null);
-    channel.basicPublish("", routingKey, MessageProperties.PERSISTENT_TEXT_PLAIN, message.getBytes(StandardCharsets.UTF_8));
+    try (Connection connection = factory.newConnection();
+         Channel channel = connection.createChannel()) {
+      channel.queueDeclare(routingKey, true, false, false, null);
+      channel.basicPublish("", routingKey,
+          MessageProperties.PERSISTENT_TEXT_PLAIN,
+          message.getBytes(StandardCharsets.UTF_8));
+      log.info(message+" sent to "+routingKey);
+    }
+
   }
 }

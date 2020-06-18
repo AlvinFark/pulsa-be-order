@@ -14,6 +14,9 @@ import com.debrief2.pulsa.order.service.TransactionService;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rabbitmq.client.RpcServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,10 +36,12 @@ public class TestController {
   @Autowired
   private ProviderService providerService;
 
+  private static final Logger log = LoggerFactory.getLogger(RpcServer.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
   @PostMapping("/")
   public ResponseEntity<?> forTester(@RequestBody TesterRequest testerRequest){
+    log.info("["+testerRequest.getMethod()+"] receiving request for "+testerRequest.getMessage());
     String message = testerRequest.getMessage();
     String response;
     try {
@@ -108,6 +113,7 @@ public class TestController {
     } catch (NullPointerException nullPointerException) {
       response = "please use the valid 'method' 'message' format";
     }
+    log.info("["+testerRequest.getMethod()+"] response: "+response);
     return new ResponseEntity<>(response,HttpStatus.OK);
   }
 }

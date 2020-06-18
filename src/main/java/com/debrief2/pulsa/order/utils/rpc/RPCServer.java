@@ -21,10 +21,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class RPCServer {
@@ -135,6 +137,7 @@ public class RPCServer {
         } catch (NumberFormatException|JsonProcessingException e) {
           response = ResponseMessage.generic400;
         }
+        log.info("["+queueName+"] response: "+response);
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProps, response.getBytes(StandardCharsets.UTF_8));
         channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
         synchronized (monitor) {

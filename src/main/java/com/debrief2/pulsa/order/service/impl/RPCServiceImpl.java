@@ -87,15 +87,10 @@ public class RPCServiceImpl implements RPCService {
   }
 
   @Override
-  public void increaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException {
+  public void increaseBalance(long userId, long value) throws OtherServiceException {
     try {
       BalanceRequest request = new BalanceRequest(userId,value);
-      //switch to persistent later
-      rpcClient.call(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberConnection);
+      rpcClient.persistentCall(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
     } catch (Exception e) {
       e.printStackTrace();
       throw new OtherServiceException(e.getClass().getSimpleName());
@@ -137,15 +132,10 @@ public class RPCServiceImpl implements RPCService {
   }
 
   @Override
-  public void unRedeem(long userId, long voucherId) throws ServiceUnreachableException, OtherServiceException {
+  public void unRedeem(long userId, long voucherId) throws OtherServiceException {
     try {
       UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
-      //switch into persistent
-      rpcClient.call(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
+      rpcClient.persistentCall(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
     } catch (Exception e) {
       e.printStackTrace();
       throw new OtherServiceException(e.getClass().getSimpleName());
@@ -156,12 +146,7 @@ public class RPCServiceImpl implements RPCService {
   public void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
     try {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
-      //switch into persistent
-      rpcClient.call(promotionUrl,"issue",objectMapper.writeValueAsString(request));
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
+      rpcClient.persistentCall(promotionUrl,"issue",objectMapper.writeValueAsString(request));
     } catch (Exception e) {
       e.printStackTrace();
       throw new OtherServiceException(e.getClass().getSimpleName());
