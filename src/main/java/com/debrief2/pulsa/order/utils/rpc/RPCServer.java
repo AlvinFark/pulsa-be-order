@@ -21,12 +21,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.TimeoutException;
 
 @Component
 public class RPCServer {
@@ -89,14 +87,14 @@ public class RPCServer {
               Provider provider = providerService.getProviderById(Long.parseLong(message));
               response = objectMapper.writeValueAsString(provider);
               if (provider==null||provider.getDeletedAt()!=null) {
-                response = ResponseMessage.getProviderById404;
+                response = ResponseMessage.provider404;
               }
               break;
             case "getPaymentMethodNameById":
               PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
               response = objectMapper.writeValueAsString(paymentMethodName);
               if (paymentMethodName==null){
-                response = ResponseMessage.getPaymentMethodNameById404;
+                response = ResponseMessage.method404;
               }
               break;
             case "getTransactionById":

@@ -63,14 +63,14 @@ public class TestController {
           Provider provider = providerService.getProviderById(Long.parseLong(message));
           response = objectMapper.writeValueAsString(provider);
           if (provider==null||provider.getDeletedAt()!=null) {
-            response = ResponseMessage.getProviderById404;
+            response = ResponseMessage.provider404;
           }
           break;
         case "getPaymentMethodNameById":
           PaymentMethodName paymentMethodName = transactionService.getPaymentMethodNameById(Long.parseLong(message));
           response = objectMapper.writeValueAsString(paymentMethodName);
           if (paymentMethodName==null){
-            response = ResponseMessage.getPaymentMethodNameById404;
+            response = ResponseMessage.method404;
           }
           break;
         case "getTransactionById":

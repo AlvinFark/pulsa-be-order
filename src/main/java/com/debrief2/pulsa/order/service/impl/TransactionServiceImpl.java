@@ -43,18 +43,11 @@ public class TransactionServiceImpl implements TransactionService {
   //for promotion service
   @Override
   public TransactionWithMethodId getTransactionById(long id) throws ServiceException {
-    //wait for transaction to be unused then set as used
-
     //first refresh transaction status if this transaction
     refreshById(id);
 
-    //get the transaction
-    TransactionDTO transactionDTO = transactionMapper.getById(id);
-    //return not found if received null as response
-    if (transactionDTO==null){
-      throw new ServiceException(ResponseMessage.getTransactionById404);
-    }
-
+    //get the transaction, method include return error if not found
+    TransactionDTO transactionDTO = getAndValidateTransactionDTO(id);
     //return the transaction that has been converted to transaction model, this adapter also get catalog and provider detail
     return transactionAdapter.transactionDTOtoTransactionWithMethodIdAdapter(transactionDTO);
   }
@@ -62,37 +55,18 @@ public class TransactionServiceImpl implements TransactionService {
   //when user check details of transaction
   @Override
   public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
-    //wait for transaction to be unused then set as used
+    //call member domain, include return error if not found or error when send request
+    validateUser(userId);
 
-    //validate user exist
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
-
-    //refresh status so that it will updated if expired
+    //refresh status so that it will be updated if expired
     refreshById(id);
 
-    //get the transaction
-    TransactionDTO transactionDTO = transactionMapper.getById(id);
-    //return if null or not user's transaction
-    if (transactionDTO==null||transactionDTO.getUserId()!=userId){
-      throw new ServiceException(ResponseMessage.getTransactionById404);
-    }
-
-    //get the details for voucher
-    //if error from calling other service, just sent error message since it's the method not changing anything
-    Voucher voucher = null;
-    try {
-      if (transactionDTO.getVoucherId()!=0){
-        voucher = rpcService.getVoucher(transactionDTO.getVoucherId());
-      }
-    } catch (ServiceUnreachableException e) {
-      throw new ServiceException(e.getMessage());
-    }
+    //get the transaction, method include return error if not found
+    TransactionDTO transactionDTO = getAndValidateTransactionDTO(id);
+    //validate it's user's transaction, include return error if don't belong to user
+    validateTransactionBelongToUser(userId, transactionDTO);
+    //get the details for voucher from promotion domain, include return error if error when send request
+    Voucher voucher = getAndValidateVoucher(transactionDTO.getVoucherId());
 
     //return the transaction details, this adapter also get catalog and provider detail
     return transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher);
@@ -101,14 +75,8 @@ public class TransactionServiceImpl implements TransactionService {
   //when user open mobile recharge page, they'll see their history of numbers the've used before as recommendation
   @Override
   public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
-    //validate user exist
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
+    //call member domain, include return error if not found or error when send request
+    validateUser(userId);
 
     //get 10 latest created transaction from db
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
@@ -116,14 +84,14 @@ public class TransactionServiceImpl implements TransactionService {
     List<RecentNumberResponse> recentNumberResponses = new ArrayList<>();
 
     //for each transaction, get the detail provider and wrap it into return format
-    //it doesn't matter if provider is soft deleted since it's a history kind a thing
+    //it doesn't matter if provider is soft deleted since it's a history thing
     for (TransactionDTO transactionDTO:transactionDTOS) {
       Provider provider = providerService.getProviderByPrefix(transactionDTO.getPhoneNumber().substring(1,5));
       RecentNumberResponse recentNumberResponse = RecentNumberResponse.builder()
           .number(transactionDTO.getPhoneNumber())
           .provider(provider)
           .date(transactionDTO.getCreatedAt())
-          .build();;
+          .build();
       recentNumberResponses.add(recentNumberResponse);
     }
 
@@ -135,51 +103,22 @@ public class TransactionServiceImpl implements TransactionService {
   @Override
   @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
   public OrderResponse createTransaction(long userId, long catalogId, String phoneNumber) throws ServiceException {
-    //wait for user's transaction to be unused then set as used
-
     //check if similar transaction already created within 30 seconds, for possible mistake or other reasons
     //return error message if exist
-    TransactionDTO tr = transactionMapper.checkExistWithin30second(userId,phoneNumber,catalogId,
-        getIdByPaymentMethodName(PaymentMethodName.WALLET),getIdByTransactionStatusName(TransactionStatusName.WAITING));
-    if (tr!=null){
-      throw new ServiceException(ResponseMessage.createTransaction409);
-    }
+    TransactionDTO tr = transactionMapper.checkExistWithin30second(userId,phoneNumber,catalogId, getIdByPaymentMethodName(PaymentMethodName.WALLET),getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    if (tr!=null) throw new ServiceException(ResponseMessage.createTransaction409);
 
-    //validate user
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
+    //call member domain, include return error if not found or error when send request
+    validateUser(userId);
+    //validate phone number, include return error if has wrong length, not started with 0 or non numerical
+    validatePhoneNumber(phoneNumber);
 
-    //validate phone number
-    if (phoneNumber.length()<9||phoneNumber.length()>13||phoneNumber.charAt(0)!='0'){
-      throw new ServiceException(ResponseMessage.createTransaction400phone);
-    }
-    try {
-      Long.parseLong(phoneNumber.substring(1));
-    } catch (NumberFormatException e){
-      throw new ServiceException(ResponseMessage.createTransaction400phone);
-    }
-
-    //get provider by using the phone's prefix, if not exist or deleted return error
-    Provider provider = providerService.getProviderByPrefix(phoneNumber.substring(1,5));
-    if (provider==null||provider.getDeletedAt()!=null){
-      throw new ServiceException(ResponseMessage.createTransaction404phone);
-    }
-
-    //get catalog detail, if not exist or soft deleted return error
-    PulsaCatalogDTO pulsaCatalogDTO = providerService.getCatalogDTObyId(catalogId);
-    if (pulsaCatalogDTO==null||pulsaCatalogDTO.getDeletedAt()!=null) {
-      throw new ServiceException(ResponseMessage.createTransaction404catalog);
-    }
-
+    //get provider by using the phone's prefix, include return error if not exist or deleted
+    Provider provider = getAndValidateProvider(phoneNumber);
+    //get catalog detail, include return error if not exist or soft deleted
+    PulsaCatalogDTO pulsaCatalogDTO = getAndValidatePulsaCatalogDTO(catalogId);
     //if catalog is not for this phone, return error
-    if (pulsaCatalogDTO.getProviderId()!=provider.getId()){
-      throw new ServiceException(ResponseMessage.createTransaction400Unauthorized);
-    }
+    if (pulsaCatalogDTO.getProviderId()!=provider.getId()) throw new ServiceException(ResponseMessage.catalog400);
 
     //send it to db
     TransactionDTO transactionDTOSend = TransactionDTO.builder()
@@ -190,7 +129,6 @@ public class TransactionServiceImpl implements TransactionService {
         .statusId(getIdByTransactionStatusName(TransactionStatusName.WAITING))
         .build();
     transactionMapper.insert(transactionDTOSend);
-
     //return the details, the id will be automatically updated by mybatis
     TransactionDTO transactionDTO = transactionMapper.getById(transactionDTOSend.getId());
     return transactionAdapter.transactionDTOtoOrderResponseAdapter(transactionDTO);
@@ -198,42 +136,30 @@ public class TransactionServiceImpl implements TransactionService {
 
   //for when user clicked on cancel
   @Override
-  @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
+  @Transactional(isolation = Isolation.SERIALIZABLE)
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
-    //wait for user's transaction to be unused then set as used
-
-    //validate user exist
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
+    //call member domain, include return error if not found or error when send request
+    validateUser(userId);
 
     //refresh transaction status
     refreshById(transactionId);
 
-    //if null or not user's transaction send error
-    TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
-    if (transactionDTO==null||transactionDTO.getUserId()!=userId){
-      throw new ServiceException(ResponseMessage.cancelTransaction404);
-    }
+    //get the transaction, include return error if not found
+    TransactionDTO transactionDTO = getAndValidateTransactionDTO(transactionId);
+    //validate it's user's transaction, include return error if not
+    validateTransactionBelongToUser(userId, transactionDTO);
 
     //if transaction is not in waiting state return error message
-    if (transactionDTO.getStatusId()!= getIdByTransactionStatusName(TransactionStatusName.WAITING)){
+    if (transactionDTO.getStatusId()!=getIdByTransactionStatusName(TransactionStatusName.WAITING))
       throw new ServiceException(ResponseMessage.cancelTransaction400);
-    }
 
     //update to the database
     transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.CANCELED));
-    transactionDTO.setVoucherId(0);
     transactionMapper.update(transactionDTO);
 
-    //need to get updated at detail from db
+    //need to get the updatedAt detail from db
     TransactionDTO td = transactionMapper.getById(transactionId);
     transactionDTO.setUpdatedAt(td.getUpdatedAt());
-
     //return
     return TransactionNoVoucher.builder()
         .id(transactionDTO.getId())
@@ -250,95 +176,36 @@ public class TransactionServiceImpl implements TransactionService {
   @Override
   @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
   public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
-    //wait for user's transaction to be unused then set as used
-
-    //check user exist, if not return not exist
-    //if error because other service, return error message and do nothing
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
-
     //refresh transaction status
     refreshById(transactionId);
 
-    //check method valid
-    PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
-    if (paymentMethod==null){
-      throw new ServiceException(ResponseMessage.pay404method);
-    }
+    //check user exist, if not return not exist
+    //if error because other service, return error message and do nothing
+    validateUser(userId);
+    //validate method, return error if not found
+    validateMethod(methodId);
 
-    //check if transaction available to pay (exist, user's, and still waiting state)
-    TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
-    if (transactionDTO==null||transactionDTO.getUserId()!=userId||getTransactionStatusNameById(transactionDTO.getStatusId())!=TransactionStatusName.WAITING){
-      throw new ServiceException(ResponseMessage.pay404transaction);
-    }
+    //get the transaction, include return error if not found
+    TransactionDTO transactionDTO = getAndValidateTransactionDTO(transactionId);
+    //validate it's user's transaction, return error if not
+    validateTransactionBelongToUser(userId, transactionDTO);
 
-    //change status to verifying
-    transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
-    transactionMapper.update(transactionDTO);
+    //check if transaction still in waiting state, return error if not
+    if (getTransactionStatusNameById(transactionDTO.getStatusId())!=TransactionStatusName.WAITING)
+      throw new ServiceException(ResponseMessage.transaction404);
 
-    //get catalog detail (POSSIBLE ERROR IF CATALOG REMOVED IN BETWEEN ORDER AND PAY, RETURN FAILED, CHANGE ADAPTER FIRST)
+    //get catalog detail
     PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
+    //redeem and then get voucher detail, include errors and reverting voucher by unRedeem
+    Voucher voucher = redeemAndGetVoucherDetails(userId, methodId, voucherId, catalog.getPrice(), catalog.getProvider().getId());
+    transactionDTO.setDeduction(voucher.getDeduction());
+    transactionDTO.setVoucherId(voucherId);
 
-    //redeeming voucher if using voucher
-    //if redeeming process error, return the exact message because it's either error message from promotion or connection error
-    //and revert transaction to waiting
-    //if redeem success then get the details
-    //if getting details failed (really it shouldn't unless promotion down after redeeming)
-    //then do revert status to waiting and unredeem
-    //if unredeem failed, then throw notice user to contact customer service (this case actually would never happened unless
-    //because unredeem is using persistent message, unless case like change MQ url, rejected connection)
-    //only if everything successfully executed, add details from redeemed into voucher and transaction
-    Voucher voucher = null;
-    if (voucherId!=0){
-      Voucher redeemed;
-      try {
-        redeemed = rpcService.redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
-      } catch (ServiceUnreachableException | OtherServiceException e){
-        throw new ServiceException(e.getMessage()); //message from promotion
-      }
-      try {
-        voucher = rpcService.getVoucher(voucherId);
-      } catch (ServiceUnreachableException e){
-          asyncAdapter.unRedeem(userId,voucherId);
-          throw new ServiceException(e.getMessage());
-      }
-      voucher.setValue(redeemed.getValue());
-      transactionDTO.setVoucherId(voucherId);
-      transactionDTO.setDeduction(catalog.getPrice()-redeemed.getFinalPrice());
-    }
-
-    //first, try to get user balance, if error, revert transaction
-    //if success check if balance enough
-    //if not enough and using voucher try to unredeem, the details of error same as before
-    //if not enough also revert transaction and send error not enough balance
+    //get user balance, include return error and unRedeeming if not enough balance or error calling member domain
     //the balance saved in case of further error
-    long balance;
-    try {
-      balance = rpcService.getBalance(userId);
-      if (catalog.getPrice()-transactionDTO.getDeduction()>balance){
-        if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
-        throw new ServiceException(ResponseMessage.pay400);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
-      throw new ServiceException(e.getMessage());
-    }
-
-    //try to decrease balance,
-    //if error revert transaction and unredeem voucher if using voucher
-    //if unredeeming error, same as before
-    try {
-      rpcService.decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
-      balance -= catalog.getPrice()-transactionDTO.getDeduction();
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
-      throw new ServiceException(e.getMessage());
-    }
+    long balance = getAndValidateEnoughBalance(userId,catalog.getPrice(),transactionDTO.getDeduction(),voucherId);
+    //decrease balance, include error and unredeeming if failed to decrease or connect
+    balance = decreaseBalance(balance,catalog.getPrice(),transactionDTO.getDeduction(),userId,voucherId);
 
     //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
     HttpStatus response = sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
@@ -385,16 +252,18 @@ public class TransactionServiceImpl implements TransactionService {
       asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
       asyncAdapter.unRedeem(userId,voucherId);
       balance += catalog.getPrice()-transactionDTO.getDeduction();
+    } else {
+      //change status to verifying
+      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
+      transactionMapper.update(transactionDTO);
     }
 
     //return details transaction, whether get voucher or not, and updated balance
     //if after all this process, failed to  get actual balance, the balance saved before would come in handy
     try {
-      return new PayResponse(rpcService.getBalance(userId),
-          isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
+      return new PayResponse(rpcService.getBalance(userId),isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      return new PayResponse(balance,
-          isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
+      return new PayResponse(balance,isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
     }
   }
 
@@ -412,21 +281,13 @@ public class TransactionServiceImpl implements TransactionService {
 
   //the real flow when user check on history
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
-    //wait for user's transaction to be unused then set as used
-
     //validate page
     if (page<1){
       throw new ServiceException(ResponseMessage.generic400);
     }
 
-    //validate user
-    try {
-      if (!rpcService.userExist(userId)){
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
+    //call member domain, include return error if not found or error when send request
+    validateUser(userId);
 
     //refresh transaction for this user
     refreshByUserId(userId);
@@ -447,11 +308,129 @@ public class TransactionServiceImpl implements TransactionService {
     //return, same as recent number, no error if empty just return empty array
     return transactionOverview;
   }
-  ////////////////////////////////// VALIDATION ////////////////////////////////////
 
+  ////////////////////////////////// VALIDATION ////////////////////////////////////
+  private TransactionDTO getAndValidateTransactionDTO(long id) throws ServiceException {
+    TransactionDTO transactionDTO = transactionMapper.getById(id);
+    if (transactionDTO==null){
+      throw new ServiceException(ResponseMessage.transaction404);
+    }
+    return transactionDTO;
+  }
+
+  private void validateUser(long userId) throws ServiceException {
+    try {
+      if (!rpcService.userExist(userId)) {
+        throw new ServiceException(ResponseMessage.member404);
+      }
+    } catch (ServiceUnreachableException | OtherServiceException e) {
+      throw new ServiceException(e.getMessage());
+    }
+  }
+
+  private void validateTransactionBelongToUser(long userId, TransactionDTO transactionDTO) throws ServiceException {
+    if (transactionDTO.getUserId()!=userId){
+      throw new ServiceException(ResponseMessage.transaction404);
+    }
+  }
+
+  private Voucher getAndValidateVoucher(long id) throws ServiceException {
+    if (id==0) return null;
+    try {
+      return rpcService.getVoucher(id);
+    } catch (ServiceUnreachableException e) {
+      throw new ServiceException(e.getMessage());
+    }
+  }
+
+  private void validatePhoneNumber(String phoneNumber) throws ServiceException {
+    if (phoneNumber.length()<9||phoneNumber.length()>13||phoneNumber.charAt(0)!='0'){
+      throw new ServiceException(ResponseMessage.phone400);
+    }
+    try {
+      Long.parseLong(phoneNumber.substring(1));
+    } catch (NumberFormatException e){
+      throw new ServiceException(ResponseMessage.phone400);
+    }
+  }
+
+  private Provider getAndValidateProvider(String phoneNumber) throws ServiceException {
+    Provider provider = providerService.getProviderByPrefix(phoneNumber.substring(1,5));
+    if (provider==null||provider.getDeletedAt()!=null){
+      throw new ServiceException(ResponseMessage.phone404);
+    }
+    return provider;
+  }
+
+  private PulsaCatalogDTO getAndValidatePulsaCatalogDTO(long catalogId) throws ServiceException {
+    PulsaCatalogDTO pulsaCatalogDTO = providerService.getCatalogDTObyId(catalogId);
+    if (pulsaCatalogDTO==null||pulsaCatalogDTO.getDeletedAt()!=null) {
+      throw new ServiceException(ResponseMessage.catalog404);
+    }
+    return pulsaCatalogDTO;
+  }
+
+  private void validateMethod(long methodId) throws ServiceException {
+    PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
+    if (paymentMethod==null){
+      throw new ServiceException(ResponseMessage.method404);
+    }
+  }
+
+  private long getAndValidateEnoughBalance(long userId, long price, long deduction, long voucherId) throws ServiceException {
+    try {
+      long balance = rpcService.getBalance(userId);
+      if (price-deduction>balance){
+        if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
+        throw new ServiceException(ResponseMessage.pay400);
+      }
+      return balance;
+    } catch (ServiceUnreachableException | OtherServiceException e) {
+      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
+      throw new ServiceException(e.getMessage());
+    }
+  }
+
+  ///////////////////////////// OTHER BUSINESS FLOW ////////////////////////////////
+  private Voucher redeemAndGetVoucherDetails(long userId, long methodId, long voucherId, long price, long providerId) throws ServiceException {
+    //redeem voucher if using voucher
+    //if redeeming process error, return the exact message because it's either error message from promotion or connection error
+    Voucher voucher = null;
+    if (voucherId!=0){
+      Voucher redeemed;
+      try {
+        redeemed = rpcService.redeem(userId,voucherId,price,methodId,providerId);
+      } catch (ServiceUnreachableException | OtherServiceException e){
+        throw new ServiceException(e.getMessage()); //message from promotion
+      }
+      //if redeem success then get the details
+      //if getting details failed, then unRedeem
+      //because unRedeem is using persistent message, it'll stay until promotion domain up again
+      try {
+        voucher = rpcService.getVoucher(voucherId);
+      } catch (ServiceUnreachableException e){
+        asyncAdapter.unRedeem(userId,voucherId);
+        throw new ServiceException(e.getMessage());
+      }
+      //save the details
+      voucher.setValue(redeemed.getValue());
+      voucher.setDeduction(price-redeemed.getFinalPrice());
+    }
+    return voucher;
+  }
+
+  private long decreaseBalance(long balance, long price, long deduction, long userId, long voucherId) throws ServiceException {
+    try {
+      rpcService.decreaseBalance(userId,price-deduction);
+      balance -= price-deduction;
+    } catch (ServiceUnreachableException | OtherServiceException e) {
+      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
+      throw new ServiceException(e.getMessage());
+    }
+    return balance;
+  }
 
   ////////////////////////////////// HELPER ////////////////////////////////////
-
   private void refreshByUserId(long userId) {
     transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
