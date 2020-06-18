@@ -19,7 +19,6 @@ public class TransactionWithMethodId {
   private long methodId;
   private String phoneNumber;
   private PulsaCatalog catalog;
-  private Voucher voucher;
   private TransactionStatusName status;
   private Date createdAt;
   private Date updatedAt;

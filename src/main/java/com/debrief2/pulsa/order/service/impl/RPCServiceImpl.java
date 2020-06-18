@@ -11,11 +11,13 @@ import com.debrief2.pulsa.order.service.RPCService;
 import com.debrief2.pulsa.order.utils.ResponseMessage;
 import com.debrief2.pulsa.order.utils.rpc.RPCClient;
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.concurrent.TimeoutException;
 
 @Service
@@ -40,13 +42,8 @@ public class RPCServiceImpl implements RPCService {
         return false;
       }
       throw new OtherServiceException(response);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 
@@ -58,13 +55,8 @@ public class RPCServiceImpl implements RPCService {
       return Long.parseLong(response.substring(1, response.length() - 1));
     } catch (NumberFormatException e) {
       throw new OtherServiceException(response);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 
@@ -76,44 +68,31 @@ public class RPCServiceImpl implements RPCService {
       if (!(message.equals("\"success\"")||message.equals("success"))){
         throw new OtherServiceException(message);
       }
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.memberIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.memberConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 
   @Override
-  public void increaseBalance(long userId, long value) throws OtherServiceException {
+  public void increaseBalance(long userId, long value) {
+    BalanceRequest request = new BalanceRequest(userId,value);
     try {
-      BalanceRequest request = new BalanceRequest(userId,value);
       rpcClient.persistentCall(memberUrl,"increaseBalance",objectMapper.writeValueAsString(request));
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
+    } catch (JsonProcessingException ignored) {}
   }
 
   @Override
-  public boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
+  public boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException {
     try {
       IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
       return objectMapper.readValue(rpcClient.call(promotionUrl,"eligibleToGetVoucher",objectMapper.writeValueAsString(request)),Boolean.class);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 
   @Override
-  public Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws OtherServiceException, ServiceUnreachableException {
+  public Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws ServiceUnreachableException, OtherServiceException {
     String message = "";
     try {
       RedeemRequest request = new RedeemRequest(userId,voucherId,price,paymentMethodId,providerId);
@@ -121,53 +100,37 @@ public class RPCServiceImpl implements RPCService {
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       throw new OtherServiceException(message);
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 
   @Override
-  public void unRedeem(long userId, long voucherId) throws OtherServiceException {
+  public void unRedeem(long userId, long voucherId) {
+    UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
     try {
-      UnRedeemRequest request = new UnRedeemRequest(userId,voucherId);
       rpcClient.persistentCall(promotionUrl,"unredeem",objectMapper.writeValueAsString(request));
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
+    } catch (JsonProcessingException ignored) {}
   }
 
   @Override
-  public void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
+  public void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) {
+    IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
     try {
-      IssueVoucherRequest request = new IssueVoucherRequest(userId, price, providerId, voucherId, paymentMethodId);
       rpcClient.persistentCall(promotionUrl,"issue",objectMapper.writeValueAsString(request));
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
-    }
+    } catch (JsonProcessingException ignored) {}
   }
 
   @Override
-  public Voucher getVoucher(long id) throws ServiceUnreachableException, OtherServiceException {
+  public Voucher getVoucher(long id) throws ServiceUnreachableException {
     String message;
     try {
       message = rpcClient.call(promotionUrl,"getVoucherDetail",String.valueOf(id));
       return objectMapper.readValue(message,Voucher.class);
     } catch (JsonParseException e) {
       return null;
-    } catch (IOException e) {
-      throw new ServiceUnreachableException(ResponseMessage.promotionIO);
-    } catch (TimeoutException e) {
+    } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new OtherServiceException(e.getClass().getSimpleName());
     }
   }
 }

@@ -40,7 +40,7 @@ public class AsyncAdapter {
   }
 
   @Async("asyncExecutor")
-  public CompletableFuture<Void> increaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException {
+  public CompletableFuture<Void> increaseBalance(long userId, long value) {
     log.info("increasing balance started");
     rpcService.increaseBalance(userId,value);
     log.info("increasing balance finished");
@@ -48,7 +48,7 @@ public class AsyncAdapter {
   }
 
   @Async("asyncExecutor")
-  public CompletableFuture<Void> issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException, OtherServiceException {
+  public CompletableFuture<Void> issue(long userId, long price, long providerId, long voucherId, long paymentMethodId) {
     log.info("issuing voucher started");
     rpcService.issue(userId,price,providerId,voucherId,paymentMethodId);
     log.info("issuing voucher finished");
@@ -56,18 +56,10 @@ public class AsyncAdapter {
   }
 
   @Async("asyncExecutor")
-  public CompletableFuture<Void> unRedeem(long userId, long voucherId) throws ServiceUnreachableException, OtherServiceException {
+  public CompletableFuture<Void> unRedeem(long userId, long voucherId) {
     log.info("unRedeeming started");
     rpcService.unRedeem(userId, voucherId);
     log.info("unRedeeming finished");
-    return CompletableFuture.completedFuture(null);
-  }
-
-  @Async("asyncExecutor")
-  public CompletableFuture<Void> update(TransactionDTO transactionDTO){
-    log.info("updating transaction started");
-    transactionMapper.update(transactionDTO);
-    log.info("updating transaction finished");
     return CompletableFuture.completedFuture(null);
   }
 }

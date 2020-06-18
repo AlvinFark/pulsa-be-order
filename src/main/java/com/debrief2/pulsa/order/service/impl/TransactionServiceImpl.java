@@ -20,12 +20,11 @@ import com.debrief2.pulsa.order.utils.ResponseMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class TransactionServiceImpl implements TransactionService {
@@ -41,35 +40,22 @@ public class TransactionServiceImpl implements TransactionService {
   @Autowired
   AsyncAdapter asyncAdapter;
 
-  private static HashMap<Long, Boolean> flagTransactionUsed = new HashMap<>();
-  private static HashMap<Long, Boolean> flagTransactionUsedByUser = new HashMap<>();
-
   //for promotion service
   @Override
   public TransactionWithMethodId getTransactionById(long id) throws ServiceException {
     //wait for transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsed.getOrDefault(id,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("transaction is in use");
-      }
-    }
-    flagTransactionUsed.put(id,true);
 
     //first refresh transaction status if this transaction
-    transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    refreshById(id);
 
     //get the transaction
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     //return not found if received null as response
     if (transactionDTO==null){
-      flagTransactionUsed.put(id,false);
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
 
     //return the transaction that has been converted to transaction model, this adapter also get catalog and provider detail
-    flagTransactionUsed.put(id,false);
     return transactionAdapter.transactionDTOtoTransactionWithMethodIdAdapter(transactionDTO);
   }
 
@@ -77,34 +63,23 @@ public class TransactionServiceImpl implements TransactionService {
   @Override
   public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
     //wait for transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsed.getOrDefault(id,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("transaction is in use");
-      }
-    }
-    flagTransactionUsed.put(id,true);
 
     //validate user exist
     try {
       if (!rpcService.userExist(userId)){
-        flagTransactionUsed.put(id,false);
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsed.put(id,false);
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //refresh status so that it will updated if expired
-    transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    refreshById(id);
 
     //get the transaction
     TransactionDTO transactionDTO = transactionMapper.getById(id);
     //return if null or not user's transaction
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
-      flagTransactionUsed.put(id,false);
       throw new ServiceException(ResponseMessage.getTransactionById404);
     }
 
@@ -115,13 +90,11 @@ public class TransactionServiceImpl implements TransactionService {
       if (transactionDTO.getVoucherId()!=0){
         voucher = rpcService.getVoucher(transactionDTO.getVoucherId());
       }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsed.put(id,false);
-      throw new ServiceException(e.getMessage()+" when try to get detail voucher");
+    } catch (ServiceUnreachableException e) {
+      throw new ServiceException(e.getMessage());
     }
 
     //return the transaction details, this adapter also get catalog and provider detail
-    flagTransactionUsed.put(id,false);
     return transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher);
   }
 
@@ -134,7 +107,7 @@ public class TransactionServiceImpl implements TransactionService {
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //get 10 latest created transaction from db
@@ -160,65 +133,51 @@ public class TransactionServiceImpl implements TransactionService {
 
   //when user clicked on top up option it will automatically create order
   @Override
+  @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
   public OrderResponse createTransaction(long userId, long catalogId, String phoneNumber) throws ServiceException {
     //wait for user's transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsedByUser.getOrDefault(userId,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("user's transactions is in use");
-      }
-    }
-    flagTransactionUsedByUser.put(userId,true);
 
     //check if similar transaction already created within 30 seconds, for possible mistake or other reasons
     //return error message if exist
     TransactionDTO tr = transactionMapper.checkExistWithin30second(userId,phoneNumber,catalogId,
         getIdByPaymentMethodName(PaymentMethodName.WALLET),getIdByTransactionStatusName(TransactionStatusName.WAITING));
     if (tr!=null){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction409);
     }
 
     //validate user
     try {
       if (!rpcService.userExist(userId)){
-        flagTransactionUsedByUser.put(userId,false);
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsedByUser.put(userId,false);
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //validate phone number
     if (phoneNumber.length()<9||phoneNumber.length()>13||phoneNumber.charAt(0)!='0'){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction400phone);
     }
     try {
       Long.parseLong(phoneNumber.substring(1));
     } catch (NumberFormatException e){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction400phone);
     }
 
     //get provider by using the phone's prefix, if not exist or deleted return error
     Provider provider = providerService.getProviderByPrefix(phoneNumber.substring(1,5));
     if (provider==null||provider.getDeletedAt()!=null){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction404phone);
     }
 
     //get catalog detail, if not exist or soft deleted return error
     PulsaCatalogDTO pulsaCatalogDTO = providerService.getCatalogDTObyId(catalogId);
     if (pulsaCatalogDTO==null||pulsaCatalogDTO.getDeletedAt()!=null) {
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction404catalog);
     }
 
     //if catalog is not for this phone, return error
     if (pulsaCatalogDTO.getProviderId()!=provider.getId()){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.createTransaction400Unauthorized);
     }
 
@@ -234,52 +193,35 @@ public class TransactionServiceImpl implements TransactionService {
 
     //return the details, the id will be automatically updated by mybatis
     TransactionDTO transactionDTO = transactionMapper.getById(transactionDTOSend.getId());
-    flagTransactionUsedByUser.put(userId,false);
     return transactionAdapter.transactionDTOtoOrderResponseAdapter(transactionDTO);
   }
 
   //for when user clicked on cancel
   @Override
+  @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
     //wait for user's transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsedByUser.getOrDefault(userId,false)||flagTransactionUsed.getOrDefault(transactionId,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("user's transactions is in use");
-      }
-    }
-    flagTransactionUsedByUser.put(userId,true);
-    flagTransactionUsed.put(transactionId,true);
 
     //validate user exist
     try {
       if (!rpcService.userExist(userId)){
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //refresh transaction status
-    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    refreshById(transactionId);
 
     //if null or not user's transaction send error
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId){
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
       throw new ServiceException(ResponseMessage.cancelTransaction404);
     }
 
     //if transaction is not in waiting state return error message
     if (transactionDTO.getStatusId()!= getIdByTransactionStatusName(TransactionStatusName.WAITING)){
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
       throw new ServiceException(ResponseMessage.cancelTransaction400);
     }
 
@@ -293,8 +235,6 @@ public class TransactionServiceImpl implements TransactionService {
     transactionDTO.setUpdatedAt(td.getUpdatedAt());
 
     //return
-    flagTransactionUsedByUser.put(userId,false);
-    flagTransactionUsed.put(transactionId,false);
     return TransactionNoVoucher.builder()
         .id(transactionDTO.getId())
         .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
@@ -308,48 +248,32 @@ public class TransactionServiceImpl implements TransactionService {
 
   //when user click pay
   @Override
+  @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = ServiceException.class)
   public PayResponse pay(long userId, long transactionId, long methodId, long voucherId) throws ServiceException {
     //wait for user's transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsedByUser.getOrDefault(userId,false)||flagTransactionUsed.getOrDefault(transactionId,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("user's transactions is in use");
-      }
-    }
-    flagTransactionUsedByUser.put(userId,true);
-    flagTransactionUsed.put(transactionId,true);
 
     //check user exist, if not return not exist
     //if error because other service, return error message and do nothing
     try {
       if (!rpcService.userExist(userId)){
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //refresh transaction status
-    transactionMapper.refreshStatusById(transactionId, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    refreshById(transactionId);
 
     //check method valid
     PaymentMethodName paymentMethod = getPaymentMethodNameById(methodId);
     if (paymentMethod==null){
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
       throw new ServiceException(ResponseMessage.pay404method);
     }
 
     //check if transaction available to pay (exist, user's, and still waiting state)
     TransactionDTO transactionDTO = transactionMapper.getById(transactionId);
     if (transactionDTO==null||transactionDTO.getUserId()!=userId||getTransactionStatusNameById(transactionDTO.getStatusId())!=TransactionStatusName.WAITING){
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
       throw new ServiceException(ResponseMessage.pay404transaction);
     }
 
@@ -371,34 +295,21 @@ public class TransactionServiceImpl implements TransactionService {
     //only if everything successfully executed, add details from redeemed into voucher and transaction
     Voucher voucher = null;
     if (voucherId!=0){
+      Voucher redeemed;
       try {
-        Voucher redeemed = rpcService.redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
-        try {
-          voucher = rpcService.getVoucher(voucherId);
-        } catch (ServiceUnreachableException | OtherServiceException f){
-          try {
-            transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
-            asyncAdapter.update(transactionDTO);
-            asyncAdapter.unRedeem(userId,voucherId);
-            flagTransactionUsedByUser.put(userId,false);
-            flagTransactionUsed.put(transactionId,false);
-            throw new ServiceException(f.getMessage()+" when try to get voucher details, voucher has been redeemed");
-          } catch (ServiceUnreachableException | OtherServiceException g) {
-            flagTransactionUsedByUser.put(userId,false);
-            flagTransactionUsed.put(transactionId,false);
-            throw new ServiceException(f.getMessage()+" when try to get voucher details, and failed to unredeem voucher");
-          }
-        }
-        voucher.setValue(redeemed.getValue());
-        transactionDTO.setVoucherId(voucherId);
-        transactionDTO.setDeduction(catalog.getPrice()-redeemed.getFinalPrice());
+        redeemed = rpcService.redeem(userId,voucherId,catalog.getPrice(),methodId,catalog.getProvider().getId());
       } catch (ServiceUnreachableException | OtherServiceException e){
-        transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
-        asyncAdapter.update(transactionDTO);
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
         throw new ServiceException(e.getMessage()); //message from promotion
       }
+      try {
+        voucher = rpcService.getVoucher(voucherId);
+      } catch (ServiceUnreachableException e){
+          asyncAdapter.unRedeem(userId,voucherId);
+          throw new ServiceException(e.getMessage());
+      }
+      voucher.setValue(redeemed.getValue());
+      transactionDTO.setVoucherId(voucherId);
+      transactionDTO.setDeduction(catalog.getPrice()-redeemed.getFinalPrice());
     }
 
     //first, try to get user balance, if error, revert transaction
@@ -410,33 +321,12 @@ public class TransactionServiceImpl implements TransactionService {
     try {
       balance = rpcService.getBalance(userId);
       if (catalog.getPrice()-transactionDTO.getDeduction()>balance){
-        transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
-        transactionDTO.setVoucherId(0);
-        transactionDTO.setDeduction(0);
-        asyncAdapter.update(transactionDTO);
-        if (voucherId!=0){
-          try {
-            asyncAdapter.unRedeem(userId,voucherId);
-          } catch (ServiceUnreachableException | OtherServiceException e) {
-            e.printStackTrace();
-            flagTransactionUsedByUser.put(userId,false);
-            flagTransactionUsed.put(transactionId,false);
-            throw new ServiceException(ResponseMessage.pay400 + ", and " + e.getMessage() + " when try to unredeem voucher");
-          }
-        }
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
+        if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
         throw new ServiceException(ResponseMessage.pay400);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
-      transactionDTO.setVoucherId(0);
-      transactionDTO.setDeduction(0);
-      asyncAdapter.update(transactionDTO);
-      e.printStackTrace();
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
-      throw new ServiceException(e.getMessage() + " when try to check enough balance");
+      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
+      throw new ServiceException(e.getMessage());
     }
 
     //try to decrease balance,
@@ -446,27 +336,14 @@ public class TransactionServiceImpl implements TransactionService {
       rpcService.decreaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
       balance -= catalog.getPrice()-transactionDTO.getDeduction();
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.WAITING));
-      transactionDTO.setVoucherId(0);
-      transactionDTO.setDeduction(0);
-      asyncAdapter.update(transactionDTO);
-      if (voucherId!=0){
-        try {
-          asyncAdapter.unRedeem(userId,voucherId);
-        } catch (ServiceUnreachableException | OtherServiceException f) {
-          e.printStackTrace();
-          flagTransactionUsedByUser.put(userId,false);
-          flagTransactionUsed.put(transactionId,false);
-          throw new ServiceException(f.getMessage() + " when try to unredeem voucher, when try to decrease balance failed");
-        }
-      }
-      flagTransactionUsed.put(transactionId,false);
-      throw new ServiceException(e.getMessage() + " when try to decrease balance");
+      if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
+      throw new ServiceException(e.getMessage());
     }
 
     //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
     HttpStatus response = sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
 
+    boolean isEligibleToGetVoucher = false;
     //case accepted
     if (response==HttpStatus.ACCEPTED){
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.COMPLETED));
@@ -474,88 +351,50 @@ public class TransactionServiceImpl implements TransactionService {
       //if error when checking, do nothing and set it as not getting voucher
       //(not possible to send message since the return to mobile domain already set as the object, need to discuss first)
       //but still will call issue voucher so user still get voucher even though not notified
-      boolean callIssueVoucher = true;
-      boolean isEligibleToGetVoucher = false;
+      boolean callIssueVoucher = false;
       if (voucherId==0){
+        callIssueVoucher = true;
         try {
           isEligibleToGetVoucher = rpcService.eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
               catalog.getProvider().getId(), voucherId, methodId);
           callIssueVoucher = isEligibleToGetVoucher;
-        } catch (ServiceUnreachableException | OtherServiceException e) {
-          e.printStackTrace();
-        }
+        } catch (ServiceUnreachableException ignored) {}
       }
 
       //update the database
-      CompletableFuture<Void> asyncUpdate = asyncAdapter.update(transactionDTO);
+      transactionMapper.update(transactionDTO);
       //give cashback if using voucher on cashback type by increasing balance
       //if increase balance error (small possibility since it's persistent)
       //do nothing (again because the return format)
       if (voucherId!=0&&voucher.getValue()>0){
-        try {
-          asyncAdapter.increaseBalance(userId,voucher.getValue());
-          balance += voucher.getValue();
-        } catch (ServiceUnreachableException | OtherServiceException e) {
-          e.printStackTrace();
-        }
+        asyncAdapter.increaseBalance(userId,voucher.getValue());
+        balance += voucher.getValue();
       }
       //issue voucher if possible to get one, persistent so less likely to get error
       if (callIssueVoucher){
-        try {
-          asyncAdapter.issue(userId, catalog.getPrice()-transactionDTO.getDeduction(),
-              catalog.getProvider().getId(), voucherId, methodId);
-        } catch (ServiceUnreachableException | OtherServiceException e) {
-          e.printStackTrace();
-        }
+        asyncAdapter.issue(userId,catalog.getPrice()-transactionDTO.getDeduction(),catalog.getProvider().getId(),voucherId,methodId);
       }
-
-      CompletableFuture.allOf(asyncUpdate).join();
-      //return details transaction, whether get voucher or not, and updated balance
-      //if after all this process, failed to  get actual balance, the balance saved before would come in handy
-      try {
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
-        return new PayResponse(rpcService.getBalance(userId),
-            isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
-      } catch (ServiceUnreachableException | OtherServiceException e) {
-        flagTransactionUsedByUser.put(userId,false);
-        flagTransactionUsed.put(transactionId,false);
-        return new PayResponse(balance,
-            isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
-      }
-    }
-
-    //case rejected
-    if (response==HttpStatus.BAD_REQUEST){
+    } else if (response==HttpStatus.BAD_REQUEST){
       //revert all transaction details but change to failed so that user won't try to pay again (it is rejected for a reason)
+      voucher = null;
       transactionDTO.setVoucherId(0);
       transactionDTO.setDeduction(0);
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
-      CompletableFuture<Void> asyncUpdate = asyncAdapter.update(transactionDTO);
+      transactionMapper.update(transactionDTO);
       //increase balance back and unredeem voucher back persistently
-      try {
-        asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
-        balance += catalog.getPrice()-transactionDTO.getDeduction();
-      } catch (ServiceUnreachableException | OtherServiceException e) {
-        e.printStackTrace();
-      }
-      try {
-        asyncAdapter.unRedeem(userId,voucherId);
-      } catch (ServiceUnreachableException | OtherServiceException e) {
-        e.printStackTrace();
-      }
-      CompletableFuture.allOf(asyncUpdate).join();
+      asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+      asyncAdapter.unRedeem(userId,voucherId);
+      balance += catalog.getPrice()-transactionDTO.getDeduction();
     }
 
-    //the return for failed is the same format as rejected
+    //return details transaction, whether get voucher or not, and updated balance
+    //if after all this process, failed to  get actual balance, the balance saved before would come in handy
     try {
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
-      return new PayResponse(rpcService.getBalance(userId),false, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,null));
+      return new PayResponse(rpcService.getBalance(userId),
+          isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsedByUser.put(userId,false);
-      flagTransactionUsed.put(transactionId,false);
-      return new PayResponse(balance,false, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,null));
+      return new PayResponse(balance,
+          isEligibleToGetVoucher, transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
     }
   }
 
@@ -574,34 +413,23 @@ public class TransactionServiceImpl implements TransactionService {
   //the real flow when user check on history
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
     //wait for user's transaction to be unused then set as used
-    Instant limit = Instant.now().plusSeconds(10);
-    while (flagTransactionUsedByUser.getOrDefault(userId,false)){
-      if (Instant.now().compareTo(limit)>0){
-        throw new ServiceException("user's transactions is in use");
-      }
-    }
-    flagTransactionUsedByUser.put(userId,true);
 
     //validate page
     if (page<1){
-      flagTransactionUsedByUser.put(userId,false);
       throw new ServiceException(ResponseMessage.generic400);
     }
 
     //validate user
     try {
       if (!rpcService.userExist(userId)){
-        flagTransactionUsedByUser.put(userId,false);
         throw new ServiceException(ResponseMessage.member404);
       }
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      flagTransactionUsedByUser.put(userId,false);
-      throw new ServiceException(e.getMessage()+" when try to check user exist");
+      throw new ServiceException(e.getMessage());
     }
 
     //refresh transaction for this user
-    transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
-        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+    refreshByUserId(userId);
 
     //calculate the offset
     long offset = (page-1)*10;
@@ -617,12 +445,22 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     //return, same as recent number, no error if empty just return empty array
-    flagTransactionUsedByUser.put(userId,false);
     return transactionOverview;
   }
+  ////////////////////////////////// VALIDATION ////////////////////////////////////
+
 
   ////////////////////////////////// HELPER ////////////////////////////////////
-  //these are just helper for easier extraction of data from enums
+
+  private void refreshByUserId(long userId) {
+    transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+  }
+
+  private void refreshById(long id) {
+    transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
+        getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
+  }
 
   @Override
   public PaymentMethodName getPaymentMethodNameById(long id){

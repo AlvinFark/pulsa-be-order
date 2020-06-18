@@ -33,22 +33,22 @@ public class RPCClient {
     return new RpcClient(params).stringCall(message);
   }
 
-  public void persistentCall(String url, String routingKey, String message) throws URISyntaxException, IOException, TimeoutException {
-    final URI rabbitMqUrl = new URI(url);
-    ConnectionFactory factory = new ConnectionFactory();
-    factory.setUsername(rabbitMqUrl.getUserInfo().split(":")[0]);
-    factory.setPassword(rabbitMqUrl.getUserInfo().split(":")[1]);
-    factory.setHost(rabbitMqUrl.getHost());
-    factory.setPort(rabbitMqUrl.getPort());
-    factory.setVirtualHost(rabbitMqUrl.getPath().substring(1));
-    try (Connection connection = factory.newConnection();
-         Channel channel = connection.createChannel()) {
+  public void persistentCall(String url, String routingKey, String message) {
+    try {
+      final URI rabbitMqUrl = new URI(url);
+      ConnectionFactory factory = new ConnectionFactory();
+      factory.setUsername(rabbitMqUrl.getUserInfo().split(":")[0]);
+      factory.setPassword(rabbitMqUrl.getUserInfo().split(":")[1]);
+      factory.setHost(rabbitMqUrl.getHost());
+      factory.setPort(rabbitMqUrl.getPort());
+      factory.setVirtualHost(rabbitMqUrl.getPath().substring(1));
+      Connection connection = factory.newConnection();
+      Channel channel = connection.createChannel();
       channel.queueDeclare(routingKey, true, false, false, null);
-      channel.basicPublish("", routingKey,
-          MessageProperties.PERSISTENT_TEXT_PLAIN,
-          message.getBytes(StandardCharsets.UTF_8));
+      channel.basicPublish("", routingKey,MessageProperties.PERSISTENT_TEXT_PLAIN,message.getBytes(StandardCharsets.UTF_8));
       log.info(message+" sent to "+routingKey);
+    } catch (URISyntaxException | IOException | TimeoutException e) {
+      e.printStackTrace();
     }
-
   }
 }
