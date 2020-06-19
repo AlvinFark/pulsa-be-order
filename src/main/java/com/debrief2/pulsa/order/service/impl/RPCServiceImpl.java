@@ -2,6 +2,7 @@ package com.debrief2.pulsa.order.service.impl;
 
 import com.debrief2.pulsa.order.exception.OtherServiceException;
 import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
+import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.model.Voucher;
 import com.debrief2.pulsa.order.payload.request.BalanceRequest;
 import com.debrief2.pulsa.order.payload.request.IssueVoucherRequest;
@@ -14,6 +15,7 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -132,5 +134,13 @@ public class RPCServiceImpl implements RPCService {
     } catch (IOException | TimeoutException | URISyntaxException e) {
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     }
+  }
+
+  //third party call
+  @Override
+  public HttpStatus sendTopUpRequestTo3rdPartyServer(String phoneNumber, PulsaCatalog catalog){
+    return HttpStatus.ACCEPTED;
+//    return HttpStatus.BAD_REQUEST;
+//    return HttpStatus.INTERNAL_SERVER_ERROR;
   }
 }

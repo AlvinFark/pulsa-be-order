@@ -16,7 +16,6 @@ public class ResponseMessage {
   public static final String getAllCatalog400 = "invalid phone number";
   public static final String getAllCatalog404 = "unknown phone number";
   public static final String member404 = "unknown user";
-  public static final String pay404transaction = "unknown transaction";
   public static final String pay400 = "not enough balance";
   public static final String memberConnection = "member service unreachable";
   public static final String promotionConnection = "promotion service unreachable";

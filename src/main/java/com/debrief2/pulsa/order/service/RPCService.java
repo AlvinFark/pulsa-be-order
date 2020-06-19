@@ -2,7 +2,9 @@ package com.debrief2.pulsa.order.service;
 
 import com.debrief2.pulsa.order.exception.OtherServiceException;
 import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
+import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.model.Voucher;
+import org.springframework.http.HttpStatus;
 
 public interface RPCService {
 
@@ -15,4 +17,6 @@ public interface RPCService {
   void unRedeem(long userId, long voucherId);
   void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId);
   Voucher getVoucher(long id) throws ServiceUnreachableException;
+
+  HttpStatus sendTopUpRequestTo3rdPartyServer(String phoneNumber, PulsaCatalog catalog);
 }

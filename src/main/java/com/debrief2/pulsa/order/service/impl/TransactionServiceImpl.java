@@ -86,13 +86,7 @@ public class TransactionServiceImpl implements TransactionService {
     //for each transaction, get the detail provider and wrap it into return format
     //it doesn't matter if provider is soft deleted since it's a history thing
     for (TransactionDTO transactionDTO:transactionDTOS) {
-      Provider provider = providerService.getProviderByPrefix(transactionDTO.getPhoneNumber().substring(1,5));
-      RecentNumberResponse recentNumberResponse = RecentNumberResponse.builder()
-          .number(transactionDTO.getPhoneNumber())
-          .provider(provider)
-          .date(transactionDTO.getCreatedAt())
-          .build();
-      recentNumberResponses.add(recentNumberResponse);
+      recentNumberResponses.add(transactionAdapter.transactionDTOtoRecentNumberResponseAdapter(transactionDTO));
     }
 
     //return it. No error message for empty data just empty array as requested from frontend
@@ -161,15 +155,7 @@ public class TransactionServiceImpl implements TransactionService {
     TransactionDTO td = transactionMapper.getById(transactionId);
     transactionDTO.setUpdatedAt(td.getUpdatedAt());
     //return
-    return TransactionNoVoucher.builder()
-        .id(transactionDTO.getId())
-        .method(getPaymentMethodNameById(transactionDTO.getMethodId()))
-        .phoneNumber(transactionDTO.getPhoneNumber())
-        .catalog(providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId())))
-        .status(getTransactionStatusNameById(transactionDTO.getStatusId()))
-        .createdAt(transactionDTO.getCreatedAt())
-        .updatedAt(transactionDTO.getUpdatedAt())
-        .build();
+    return transactionAdapter.transactionDTOtoTransactionNoVoucherAdapter(transactionDTO);
   }
 
   //when user click pay
@@ -198,7 +184,7 @@ public class TransactionServiceImpl implements TransactionService {
     PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
     //redeem and then get voucher detail, include errors and reverting voucher by unRedeem
     Voucher voucher = redeemAndGetVoucherDetails(userId, methodId, voucherId, catalog.getPrice(), catalog.getProvider().getId());
-    transactionDTO.setDeduction(voucher.getDeduction());
+    if (voucher!=null) transactionDTO.setDeduction(voucher.getDeduction());
     transactionDTO.setVoucherId(voucherId);
 
     //get user balance, include return error and unRedeeming if not enough balance or error calling member domain
@@ -208,7 +194,7 @@ public class TransactionServiceImpl implements TransactionService {
     balance = decreaseBalance(balance,catalog.getPrice(),transactionDTO.getDeduction(),userId,voucherId);
 
     //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
-    HttpStatus response = sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
+    HttpStatus response = rpcService.sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
 
     boolean isEligibleToGetVoucher = false;
     //case accepted
@@ -216,7 +202,6 @@ public class TransactionServiceImpl implements TransactionService {
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.COMPLETED));
       //if not using voucher, check whether available to get voucher
       //if error when checking, do nothing and set it as not getting voucher
-      //(not possible to send message since the return to mobile domain already set as the object, need to discuss first)
       //but still will call issue voucher so user still get voucher even though not notified
       boolean callIssueVoucher = false;
       if (voucherId==0){
@@ -238,20 +223,20 @@ public class TransactionServiceImpl implements TransactionService {
         balance += voucher.getValue();
       }
       //issue voucher if possible to get one, persistent so less likely to get error
-      if (callIssueVoucher){
-        asyncAdapter.issue(userId,catalog.getPrice()-transactionDTO.getDeduction(),catalog.getProvider().getId(),voucherId,methodId);
-      }
+      if (callIssueVoucher)
+        asyncAdapter.issue(userId, catalog.getPrice() - transactionDTO.getDeduction(), catalog.getProvider().getId(), voucherId, methodId);
+
     } else if (response==HttpStatus.BAD_REQUEST){
+      balance += catalog.getPrice()-transactionDTO.getDeduction();
+      //increase balance back and unredeem voucher back persistently
+      asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+      asyncAdapter.unRedeem(userId,voucherId);
       //revert all transaction details but change to failed so that user won't try to pay again (it is rejected for a reason)
       voucher = null;
       transactionDTO.setVoucherId(0);
       transactionDTO.setDeduction(0);
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
       transactionMapper.update(transactionDTO);
-      //increase balance back and unredeem voucher back persistently
-      asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
-      asyncAdapter.unRedeem(userId,voucherId);
-      balance += catalog.getPrice()-transactionDTO.getDeduction();
     } else {
       //change status to verifying
       transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
@@ -260,6 +245,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     //return details transaction, whether get voucher or not, and updated balance
     //if after all this process, failed to  get actual balance, the balance saved before would come in handy
+    transactionDTO = transactionMapper.getById(transactionId);
     try {
       return new PayResponse(rpcService.getBalance(userId),isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
     } catch (ServiceUnreachableException | OtherServiceException e) {
@@ -282,10 +268,7 @@ public class TransactionServiceImpl implements TransactionService {
   //the real flow when user check on history
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
     //validate page
-    if (page<1){
-      throw new ServiceException(ResponseMessage.generic400);
-    }
-
+    if (page<1) throw new ServiceException(ResponseMessage.generic400);
     //call member domain, include return error if not found or error when send request
     validateUser(userId);
 
@@ -294,16 +277,14 @@ public class TransactionServiceImpl implements TransactionService {
 
     //calculate the offset
     long offset = (page-1)*10;
-
     //get the data by parameters
     List<TransactionDTO> transactionDTOS = transactionMapper.getAllByUserIdAndStatusTypeIdAndOffset(userId,getIdByTransactionStatusType(transactionStatusType),offset);
 
     //convert into accepted format, no validation for catalog etc since the data are from db and even
     //if the data soft deleted, it's still better to show since it's a history thing
     List<TransactionOverview> transactionOverview = new ArrayList<>();
-    for (TransactionDTO transactionDTO:transactionDTOS) {
+    for (TransactionDTO transactionDTO:transactionDTOS)
       transactionOverview.add(transactionAdapter.transactionDTOtoTransactionOverviewAdapter(transactionDTO));
-    }
 
     //return, same as recent number, no error if empty just return empty array
     return transactionOverview;
@@ -422,12 +403,11 @@ public class TransactionServiceImpl implements TransactionService {
   private long decreaseBalance(long balance, long price, long deduction, long userId, long voucherId) throws ServiceException {
     try {
       rpcService.decreaseBalance(userId,price-deduction);
-      balance -= price-deduction;
+      return balance - (price-deduction);
     } catch (ServiceUnreachableException | OtherServiceException e) {
       if (voucherId!=0) asyncAdapter.unRedeem(userId, voucherId);
       throw new ServiceException(e.getMessage());
     }
-    return balance;
   }
 
   ////////////////////////////////// HELPER ////////////////////////////////////
@@ -469,12 +449,5 @@ public class TransactionServiceImpl implements TransactionService {
 
   private long getIdByTransactionStatusType(TransactionStatusType transactionStatusType){
     return transactionStatusType.ordinal()+1;
-  }
-
-  /////////////////////////////////////////// 3rd Party Calls //////////////////////////////////////////
-  private HttpStatus sendTopUpRequestTo3rdPartyServer(String phoneNumber, PulsaCatalog catalog){
-    return HttpStatus.ACCEPTED;
-//    return HttpStatus.BAD_REQUEST;
-//    return HttpStatus.INTERNAL_SERVER_ERROR;
   }
 }
