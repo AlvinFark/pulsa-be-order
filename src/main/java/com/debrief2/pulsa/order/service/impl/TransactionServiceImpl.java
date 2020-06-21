@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -175,7 +176,6 @@ public class TransactionServiceImpl implements TransactionService {
     TransactionDTO transactionDTO = getAndValidateTransactionDTO(transactionId);
     //validate it's user's transaction, return error if not
     validateTransactionBelongToUser(userId, transactionDTO);
-
     //check if transaction still in waiting state, return error if not
     if (getTransactionStatusNameById(transactionDTO.getStatusId())!=TransactionStatusName.WAITING)
       throw new ServiceException(ResponseMessage.transaction404);
@@ -187,60 +187,65 @@ public class TransactionServiceImpl implements TransactionService {
     if (voucher!=null) transactionDTO.setDeduction(voucher.getDeduction());
     transactionDTO.setVoucherId(voucherId);
 
-    //get user balance, include return error and unRedeeming if not enough balance or error calling member domain
-    //the balance saved in case of further error
-    long balance = getAndValidateEnoughBalance(userId,catalog.getPrice(),transactionDTO.getDeduction(),voucherId);
-    //decrease balance, include error and unredeeming if failed to decrease or connect
-    balance = decreaseBalance(balance,catalog.getPrice(),transactionDTO.getDeduction(),userId,voucherId);
-
-    //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
-    HttpStatus response = rpcService.sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
-
+    long balance = 0;
     boolean isEligibleToGetVoucher = false;
-    //case accepted
-    if (response==HttpStatus.ACCEPTED){
-      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.COMPLETED));
-      //if not using voucher, check whether available to get voucher
-      //if error when checking, do nothing and set it as not getting voucher
-      //but still will call issue voucher so user still get voucher even though not notified
-      boolean callIssueVoucher = false;
-      if (voucherId==0){
-        callIssueVoucher = true;
-        try {
-          isEligibleToGetVoucher = rpcService.eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
-              catalog.getProvider().getId(), voucherId, methodId);
-          callIssueVoucher = isEligibleToGetVoucher;
-        } catch (ServiceUnreachableException ignored) {}
-      }
+    switch (getPaymentMethodNameById(methodId)){
+      case WALLET:
+        //get user balance, include return error and unRedeeming if not enough balance or error calling member domain
+        //the balance saved in case of further error
+        balance = getAndValidateEnoughBalance(userId,catalog.getPrice(),transactionDTO.getDeduction(),voucherId);
+        //decrease balance, include error and unredeeming if failed to decrease or connect
+        balance = decreaseBalance(balance,catalog.getPrice(),transactionDTO.getDeduction(),userId,voucherId);
 
-      //update the database
-      transactionMapper.update(transactionDTO);
-      //give cashback if using voucher on cashback type by increasing balance
-      //if increase balance error (small possibility since it's persistent)
-      //do nothing (again because the return format)
-      if (voucherId!=0&&voucher.getValue()>0){
-        asyncAdapter.increaseBalance(userId,voucher.getValue());
-        balance += voucher.getValue();
-      }
-      //issue voucher if possible to get one, persistent so less likely to get error
-      if (callIssueVoucher)
-        asyncAdapter.issue(userId, catalog.getPrice() - transactionDTO.getDeduction(), catalog.getProvider().getId(), voucherId, methodId);
+        //send the mobile recharge request to 3rd party provider, there's 3 possibility: accepted,rejected, and internal server error
+        HttpStatus response = rpcService.sendTopUpRequestTo3rdPartyServer(transactionDTO.getPhoneNumber(),catalog);
 
-    } else if (response==HttpStatus.BAD_REQUEST){
-      balance += catalog.getPrice()-transactionDTO.getDeduction();
-      //increase balance back and unredeem voucher back persistently
-      asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
-      asyncAdapter.unRedeem(userId,voucherId);
-      //revert all transaction details but change to failed so that user won't try to pay again (it is rejected for a reason)
-      voucher = null;
-      transactionDTO.setVoucherId(0);
-      transactionDTO.setDeduction(0);
-      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
-      transactionMapper.update(transactionDTO);
-    } else {
-      //change status to verifying
-      transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
-      transactionMapper.update(transactionDTO);
+        //case accepted
+        if (response==HttpStatus.ACCEPTED){
+          transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.COMPLETED));
+          //if not using voucher, check whether available to get voucher
+          //if error when checking, do nothing and set it as not getting voucher
+          //but still will call issue voucher so user still get voucher even though not notified
+          boolean callIssueVoucher = false;
+          if (voucherId==0){
+            callIssueVoucher = true;
+            try {
+              isEligibleToGetVoucher = rpcService.eligibleToGetVoucher(userId, catalog.getPrice()-transactionDTO.getDeduction(),
+                  catalog.getProvider().getId(), voucherId, methodId);
+              callIssueVoucher = isEligibleToGetVoucher;
+            } catch (ServiceUnreachableException ignored) {}
+          }
+
+          //update the database
+          transactionMapper.update(transactionDTO);
+          //give cashback if using voucher on cashback type by increasing balance
+          //if increase balance error (small possibility since it's persistent)
+          //do nothing (again because the return format)
+          if (voucherId!=0&&voucher.getValue()>0){
+            asyncAdapter.increaseBalance(userId,voucher.getValue());
+            balance += voucher.getValue();
+          }
+          //issue voucher if possible to get one, persistent so less likely to get error
+          if (callIssueVoucher)
+            asyncAdapter.issue(userId, catalog.getPrice() - transactionDTO.getDeduction(), catalog.getProvider().getId(), voucherId, methodId);
+
+        } else if (response==HttpStatus.BAD_REQUEST){
+          //increase balance back and unredeem voucher back persistently
+          balance += catalog.getPrice()-transactionDTO.getDeduction();
+          asyncAdapter.increaseBalance(userId,catalog.getPrice()-transactionDTO.getDeduction());
+          asyncAdapter.unRedeem(userId,voucherId);
+          //revert all transaction details but change to failed so that user won't try to pay again
+          voucher = null;
+          transactionDTO.setVoucherId(0);
+          transactionDTO.setDeduction(0);
+          transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.FAILED));
+          transactionMapper.update(transactionDTO);
+        } else {
+          //change status to verifying
+          transactionDTO.setStatusId(getIdByTransactionStatusName(TransactionStatusName.VERIFYING));
+          transactionMapper.update(transactionDTO);
+        }
+        break;
     }
 
     //return details transaction, whether get voucher or not, and updated balance
@@ -411,12 +416,14 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   ////////////////////////////////// HELPER ////////////////////////////////////
-  private void refreshByUserId(long userId) {
+  @Transactional(propagation = Propagation.NESTED)
+  void refreshByUserId(long userId) {
     transactionMapper.refreshStatus(userId, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
   }
 
-  private void refreshById(long id) {
+  @Transactional(propagation = Propagation.NESTED)
+  void refreshById(long id) {
     transactionMapper.refreshStatusById(id, Global.TRANSACTION_LIFETIME_HOURS,
         getIdByTransactionStatusName(TransactionStatusName.EXPIRED), getIdByTransactionStatusName(TransactionStatusName.WAITING));
   }
