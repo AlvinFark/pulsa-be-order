@@ -4,6 +4,7 @@ import com.debrief2.pulsa.order.exception.OtherServiceException;
 import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
 import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.model.Voucher;
+import com.debrief2.pulsa.order.payload.dto.VoucherDTO;
 import org.springframework.http.HttpStatus;
 
 public interface RPCService {
@@ -13,7 +14,7 @@ public interface RPCService {
   void decreaseBalance(long userId, long value) throws ServiceUnreachableException, OtherServiceException;
   void increaseBalance(long userId, long value);
   boolean eligibleToGetVoucher(long userId, long price, long providerId, long voucherId, long paymentMethodId) throws ServiceUnreachableException;
-  Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws OtherServiceException, ServiceUnreachableException;
+  VoucherDTO redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws OtherServiceException, ServiceUnreachableException;
   void unRedeem(long userId, long voucherId);
   void issue(long userId, long price, long providerId, long voucherId, long paymentMethodId);
   Voucher getVoucher(long id) throws ServiceUnreachableException;

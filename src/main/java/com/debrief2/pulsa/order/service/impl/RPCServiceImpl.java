@@ -4,6 +4,7 @@ import com.debrief2.pulsa.order.exception.OtherServiceException;
 import com.debrief2.pulsa.order.exception.ServiceUnreachableException;
 import com.debrief2.pulsa.order.model.PulsaCatalog;
 import com.debrief2.pulsa.order.model.Voucher;
+import com.debrief2.pulsa.order.payload.dto.VoucherDTO;
 import com.debrief2.pulsa.order.payload.request.BalanceRequest;
 import com.debrief2.pulsa.order.payload.request.IssueVoucherRequest;
 import com.debrief2.pulsa.order.payload.request.RedeemRequest;
@@ -94,12 +95,12 @@ public class RPCServiceImpl implements RPCService {
   }
 
   @Override
-  public Voucher redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws ServiceUnreachableException, OtherServiceException {
+  public VoucherDTO redeem(long userId, long voucherId, long price, long paymentMethodId, long providerId) throws ServiceUnreachableException, OtherServiceException {
     String message = "";
     try {
       RedeemRequest request = new RedeemRequest(userId,voucherId,price,paymentMethodId,providerId);
       message = rpcClient.call(promotionUrl,"redeem",objectMapper.writeValueAsString(request));
-      return objectMapper.readValue(message,Voucher.class);
+      return objectMapper.readValue(message,VoucherDTO.class);
     } catch (JsonParseException e) {
       throw new OtherServiceException(message);
     } catch (IOException | TimeoutException | URISyntaxException e) {

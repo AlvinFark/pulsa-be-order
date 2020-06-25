@@ -12,6 +12,7 @@ import com.debrief2.pulsa.order.model.enums.TransactionStatusName;
 import com.debrief2.pulsa.order.model.enums.TransactionStatusType;
 import com.debrief2.pulsa.order.payload.dto.PulsaCatalogDTO;
 import com.debrief2.pulsa.order.payload.dto.TransactionDTO;
+import com.debrief2.pulsa.order.payload.dto.VoucherDTO;
 import com.debrief2.pulsa.order.payload.response.*;
 import com.debrief2.pulsa.order.repository.TransactionMapper;
 import com.debrief2.pulsa.order.service.*;
@@ -169,7 +170,7 @@ public class TransactionServiceImpl implements TransactionService {
     //get catalog detail
     PulsaCatalog catalog = providerService.catalogDTOToCatalogAdapter(providerService.getCatalogDTObyId(transactionDTO.getCatalogId()));
     //redeem and then get voucher detail, include errors and reverting voucher by unRedeem
-    Voucher voucher = redeemAndGetVoucherDetails(userId, methodId, voucherId, catalog.getPrice(), catalog.getProvider().getId());
+    VoucherDTO voucher = redeemAndGetVoucherDetails(userId, methodId, voucherId, catalog.getPrice(), catalog.getProvider().getId());
     if (voucher!=null) transactionDTO.setDeduction(voucher.getDeduction());
     transactionDTO.setVoucherId(voucherId);
     System.out.println(voucher);
@@ -236,13 +237,18 @@ public class TransactionServiceImpl implements TransactionService {
         break;
     }
 
+    Voucher voucherReturn = null;
+    if (voucher!=null){
+      voucherReturn = new Voucher(voucher);
+    }
+
     //return details transaction, whether get voucher or not, and updated balance
     //if after all this process, failed to  get actual balance, the balance saved before would come in handy
     transactionDTO = transactionMapper.getById(transactionId);
     try {
-      return new PayResponse(rpcService.getBalance(userId),isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
+      return new PayResponse(rpcService.getBalance(userId),isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucherReturn));
     } catch (ServiceUnreachableException | OtherServiceException e) {
-      return new PayResponse(balance,isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher));
+      return new PayResponse(balance,isEligibleToGetVoucher,transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucherReturn));
     }
   }
 
@@ -354,14 +360,15 @@ public class TransactionServiceImpl implements TransactionService {
   }
 
   ///////////////////////////// OTHER BUSINESS FLOW ////////////////////////////////
-  private Voucher redeemAndGetVoucherDetails(long userId, long methodId, long voucherId, long price, long providerId) throws ServiceException {
+  private VoucherDTO redeemAndGetVoucherDetails(long userId, long methodId, long voucherId, long price, long providerId) throws ServiceException {
     //redeem voucher if using voucher
     //if redeeming process error, return the exact message because it's either error message from promotion or connection error
-    Voucher voucher = null;
+    VoucherDTO voucher = null;
     if (voucherId!=0){
       try {
         voucher = rpcService.redeem(userId,voucherId,price,methodId,providerId);
         voucher.setDeduction(price-voucher.getFinalPrice());
+        voucher.setId(voucherId);
       } catch (ServiceUnreachableException | OtherServiceException e){
         throw new ServiceException(e.getMessage()); //message from promotion
       }

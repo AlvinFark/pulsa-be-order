@@ -1,6 +1,7 @@
 package com.debrief2.pulsa.order.model;
 
 import com.debrief2.pulsa.order.model.enums.VoucherType;
+import com.debrief2.pulsa.order.payload.dto.VoucherDTO;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,4 +35,14 @@ public class Voucher {
     private long value;
     @JsonIgnore
     private Date expiryDate;
+
+    public Voucher(VoucherDTO voucherDTO){
+        this.id = voucherDTO.getId();
+        this.deduction = voucherDTO.getDeduction();
+        this.voucherTypeName = voucherDTO.getVoucherTypeName();
+        this.finalPrice = voucherDTO.getFinalPrice();
+        this.name = voucherDTO.getName();
+        this.maxDeduction = voucherDTO.getMaxDeduction();
+        this.value = voucherDTO.getValue();
+    }
 }
