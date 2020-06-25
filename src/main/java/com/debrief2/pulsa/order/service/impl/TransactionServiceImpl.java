@@ -56,9 +56,6 @@ public class TransactionServiceImpl implements TransactionService {
   //when user check details of transaction
   @Override
   public Transaction getTransactionByIdByUserId(long id, long userId) throws ServiceException {
-    //call member domain, include return error if not found or error when send request
-    validateUser(userId);
-
     //refresh status so that it will be updated if expired
     refreshById(id);
 
@@ -76,9 +73,6 @@ public class TransactionServiceImpl implements TransactionService {
   //when user open mobile recharge page, they'll see their history of numbers the've used before as recommendation
   @Override
   public List<RecentNumberResponse> getRecentNumber(long userId) throws ServiceException {
-    //call member domain, include return error if not found or error when send request
-    validateUser(userId);
-
     //get 10 latest created transaction from db
     List<TransactionDTO> transactionDTOS = transactionMapper.getTenRecentByUserId(userId);
     //placeholder for returned data
@@ -103,8 +97,6 @@ public class TransactionServiceImpl implements TransactionService {
     TransactionDTO tr = transactionMapper.checkExistWithin30second(userId,phoneNumber,catalogId, getIdByPaymentMethodName(PaymentMethodName.WALLET),getIdByTransactionStatusName(TransactionStatusName.WAITING));
     if (tr!=null) throw new ServiceException(ResponseMessage.createTransaction409);
 
-    //call member domain, include return error if not found or error when send request
-    validateUser(userId);
     //validate phone number, include return error if has wrong length, not started with 0 or non numerical
     validatePhoneNumber(phoneNumber);
 
@@ -133,9 +125,6 @@ public class TransactionServiceImpl implements TransactionService {
   @Override
   @Transactional(isolation = Isolation.SERIALIZABLE)
   public TransactionNoVoucher cancel(long userId, long transactionId) throws ServiceException {
-    //call member domain, include return error if not found or error when send request
-    validateUser(userId);
-
     //refresh transaction status
     refreshById(transactionId);
 
@@ -166,9 +155,6 @@ public class TransactionServiceImpl implements TransactionService {
     //refresh transaction status
     refreshById(transactionId);
 
-    //check user exist, if not return not exist
-    //if error because other service, return error message and do nothing
-    validateUser(userId);
     //validate method, return error if not found
     validateMethod(methodId);
 
@@ -274,8 +260,6 @@ public class TransactionServiceImpl implements TransactionService {
   private List<TransactionOverview> getHistory(long userId, long page, TransactionStatusType transactionStatusType) throws ServiceException {
     //validate page
     if (page<1) throw new ServiceException(ResponseMessage.generic400);
-    //call member domain, include return error if not found or error when send request
-    validateUser(userId);
 
     //refresh transaction for this user
     refreshByUserId(userId);
@@ -302,16 +286,6 @@ public class TransactionServiceImpl implements TransactionService {
       throw new ServiceException(ResponseMessage.transaction404);
     }
     return transactionDTO;
-  }
-
-  private void validateUser(long userId) throws ServiceException {
-    try {
-      if (!rpcService.userExist(userId)) {
-        throw new ServiceException(ResponseMessage.member404);
-      }
-    } catch (ServiceUnreachableException | OtherServiceException e) {
-      throw new ServiceException(e.getMessage());
-    }
   }
 
   private void validateTransactionBelongToUser(long userId, TransactionDTO transactionDTO) throws ServiceException {
@@ -383,24 +357,12 @@ public class TransactionServiceImpl implements TransactionService {
     //if redeeming process error, return the exact message because it's either error message from promotion or connection error
     Voucher voucher = null;
     if (voucherId!=0){
-      Voucher redeemed;
       try {
-        redeemed = rpcService.redeem(userId,voucherId,price,methodId,providerId);
+        voucher = rpcService.redeem(userId,voucherId,price,methodId,providerId);
+        voucher.setDeduction(price-voucher.getFinalPrice());
       } catch (ServiceUnreachableException | OtherServiceException e){
         throw new ServiceException(e.getMessage()); //message from promotion
       }
-      //if redeem success then get the details
-      //if getting details failed, then unRedeem
-      //because unRedeem is using persistent message, it'll stay until promotion domain up again
-      try {
-        voucher = rpcService.getVoucher(voucherId);
-      } catch (ServiceUnreachableException e){
-        asyncAdapter.unRedeem(userId,voucherId);
-        throw new ServiceException(e.getMessage());
-      }
-      //save the details
-      voucher.setValue(redeemed.getValue());
-      voucher.setDeduction(price-redeemed.getFinalPrice());
     }
     return voucher;
   }
