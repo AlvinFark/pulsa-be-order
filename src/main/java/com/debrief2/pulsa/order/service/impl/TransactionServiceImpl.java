@@ -67,6 +67,10 @@ public class TransactionServiceImpl implements TransactionService {
     //get the details for voucher from promotion domain, include return error if error when send request
     Voucher voucher = getAndValidateVoucher(transactionDTO.getVoucherId());
 
+    if (voucher!=null){
+      voucher.setDeduction(transactionDTO.getDeduction());
+    }
+
     //return the transaction details, this adapter also get catalog and provider detail
     return transactionAdapter.transactionDTOtoTransactionAdapter(transactionDTO,voucher);
   }
