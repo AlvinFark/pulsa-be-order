@@ -132,6 +132,7 @@ public class RPCServiceImpl implements RPCService {
     } catch (JsonParseException e) {
       return null;
     } catch (IOException | TimeoutException | URISyntaxException e) {
+      e.printStackTrace();
       throw new ServiceUnreachableException(ResponseMessage.promotionConnection);
     }
   }
