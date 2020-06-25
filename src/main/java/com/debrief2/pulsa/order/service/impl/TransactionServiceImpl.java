@@ -172,6 +172,8 @@ public class TransactionServiceImpl implements TransactionService {
     Voucher voucher = redeemAndGetVoucherDetails(userId, methodId, voucherId, catalog.getPrice(), catalog.getProvider().getId());
     if (voucher!=null) transactionDTO.setDeduction(voucher.getDeduction());
     transactionDTO.setVoucherId(voucherId);
+    System.out.println(voucher);
+    System.out.println(transactionDTO);
 
     long balance = 0;
     boolean isEligibleToGetVoucher = false;
