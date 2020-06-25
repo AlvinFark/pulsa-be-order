@@ -16,7 +16,7 @@ public interface TransactionMapper {
   @Select("SELECT * FROM transaction WHERE userId = #{userId} ORDER BY createdAt DESC LIMIT 10")
   List<TransactionDTO> getTenRecentByUserId(long userId);
 
-  @Update("UPDATE transaction SET userId=#{userId}, methodId=#{methodId}, phoneNumber=#{phoneNumber}, catalogId=#{catalogId}, voucherId=#{voucherId}, statusId=#{statusId}, updatedAt=NOW() where id=#{id}")
+  @Update("UPDATE transaction SET userId=#{userId}, methodId=#{methodId}, phoneNumber=#{phoneNumber}, catalogId=#{catalogId}, voucherId=#{voucherId}, statusId=#{statusId}, updatedAt=NOW(), deduction=#{deduction} where id=#{id}")
   void update(TransactionDTO transactionDTO);
 
   @Update("UPDATE transaction SET statusId=#{expiredId} where userId=#{userId} AND statusId=#{waitingId} AND DATE_ADD(createdAt, INTERVAL #{lifetime} HOUR) < NOW()")
