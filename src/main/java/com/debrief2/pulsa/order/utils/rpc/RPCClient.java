@@ -30,7 +30,10 @@ public class RPCClient {
     params.exchange("");
     params.routingKey(routingKey);
     params.timeout(50000);
-    return new RpcClient(params).stringCall(message);
+    RpcClient rpcClient = new RpcClient(params);
+    String response  = rpcClient.stringCall(message);
+    rpcClient.close();
+    return response;
   }
 
   public void persistentCall(String url, String routingKey, String message) {
