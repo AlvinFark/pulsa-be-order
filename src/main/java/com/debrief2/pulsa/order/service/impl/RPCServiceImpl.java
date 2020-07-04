@@ -29,8 +29,8 @@ public class RPCServiceImpl implements RPCService {
   @Autowired
   RPCClient rpcClient;
 
-  private final String promotionUrl = "amqp://vvlfuiof:GKW_bXMNL8RvJtvEjiI4CmvBJfGL3HVZ@artistic-ibis.rmq.cloudamqp.com/vvlfuiof";
-  private final String memberUrl = "amqp://vvlfuiof:GKW_bXMNL8RvJtvEjiI4CmvBJfGL3HVZ@artistic-ibis.rmq.cloudamqp.com/vvlfuiof";
+  private final String promotionUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/refreshvh";
+  private final String memberUrl = "amqp://ynjauqav:K83KvUARdw7DyYLJF2_gt2RVzO-NS2YM@lively-peacock.rmq.cloudamqp.com/refreshvh";
   final ObjectMapper objectMapper = new ObjectMapper();
 
   @Override
