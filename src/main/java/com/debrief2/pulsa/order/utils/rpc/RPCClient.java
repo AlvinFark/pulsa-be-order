@@ -29,7 +29,7 @@ public class RPCClient {
     params.channel(connection.createChannel());
     params.exchange("");
     params.routingKey(routingKey);
-    params.timeout(50000);
+    params.timeout(20000);
     RpcClient rpcClient = new RpcClient(params);
     String response  = rpcClient.stringCall(message);
     rpcClient.close();
